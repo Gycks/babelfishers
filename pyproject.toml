@@ -1,0 +1,77 @@
+[project]
+name = "babelfishers"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Guy Clement Kamdem",email = "gycks.wolf555@slmail.me"}
+]
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.11,<4"
+dependencies = [
+    "click (>=8.4.2,<9.0.0)",
+    "pydantic (>=2.13.4,<3.0.0)",
+    "deepl (>=1.30.0,<2.0.0)",
+    "sqlalchemy (>=2.0.51,<3.0.0)",
+    "pytest (>=9.1.1,<10.0.0)",
+    "azure-ai-translation-text (>=2.0.0,<3.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[dependency-groups]
+dev = [
+    "ruff (>=0.15.21,<0.16.0)",
+    "mypy (>=2.2.0,<3.0.0)",
+    "poethepoet (>=0.48.0,<0.49.0)",
+    "python-dotenv (>=1.2.2,<2.0.0)"
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",  # All error codes
+    "F",  # All flake8 codes
+    "W",  # All warning codes
+    "B",  # All bugbear codes
+    "I",  # All import checks
+    "Q",  # All flake8-quotes checks
+    "S",  # All security checks
+    "N",  # All naming checks
+    "C4", # Catch incorrect use of comprehensions, dict, list, etc
+    "UP", # Modernize syntax (f-strings, newer type hints, etc.)
+]
+
+fixable = ["ALL"]
+unfixable = ["B"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-line-length = "dynamic"
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.mypy]
+python_version = "3.12"
+files = ["babelfishers"]
+strict = true
+show_error_codes = true
+no_implicit_optional = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+warn_unreachable = true
+check_untyped_defs = true         # type-check bodies even without annotations
+disallow_incomplete_defs = true   # reject partially annotated functions
+
+[tool.poe.tasks]
+lint = {sequence = [{cmd = "ruff check babelfishers --fix"}, {cmd = "ruff format babelfishers"}, ]}
+typecheck = {cmd = "mypy"}
+check = ["lint", "typecheck"]
