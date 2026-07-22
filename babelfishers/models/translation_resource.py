@@ -48,7 +48,7 @@ class ResourcePath(BaseModel):
 class TranslationResource(BaseModel):
     resource_type: TranslationResourceType
     excluded_keys: list[str]
-    engines: Engine | None
+    engine: Engine | None
     paths: list[ResourcePath]
 
     @classmethod
@@ -107,7 +107,7 @@ class TranslationResource(BaseModel):
                     cls(
                         resource_type=resource_type,
                         excluded_keys=entry.get("excluded_keys", []),
-                        engines=engine,
+                        engine=engine,
                         paths=resource_paths,
                     )
                 )

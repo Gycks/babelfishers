@@ -10,9 +10,9 @@ class Culture(BaseModel):
         """Return the provider-specific code, falling back to the canonical code.
 
         Args:
-            provider (str): The name of the translation provider.
+            provider: The name of the translation provider.
 
         Returns:
-            (str): The provider-specific code if available, otherwise the canonical code.
+            The provider-specific code if available, otherwise the canonical code.
         """
         return self.provider_codes.get(provider, self.code)

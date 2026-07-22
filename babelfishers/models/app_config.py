@@ -76,10 +76,10 @@ class AppConfig(BaseModel):
         Loads the application configuration
 
         Args:
-            config_path (Path): Path to the underlying configuration file
+            config_path: Path to the underlying configuration file
 
         Returns:
-            (AppConfig): The application configuration
+            The application configuration
         """
 
         logger.info(ConsoleFormatter.info("Loading app configuration"))
