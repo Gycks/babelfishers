@@ -234,7 +234,9 @@ class TMStore:
         with self._conn() as conn:
             conn.execute("DELETE FROM translation_memory")
 
-    # ── Internal ──────────────────────────────────────────────────────────────
+    # ======================================== #
+    # =============== Internal =============== #
+    # ======================================== #
 
     def _bootstrap(self) -> None:
         conn = sqlite3.connect(self._db_path)

@@ -35,7 +35,7 @@ class Glossary(BaseModel):
         if path.suffix.strip().lower() != ".json":
             raise ValueError("Glossary must be in a JSON format")
 
-        data: list[dict[str, Any]] = json.loads(path.read_text(encoding="utf8"))
+        data: list[dict[str, Any]] = json.loads(path.read_text(encoding="utf-8"))
         results = []
 
         for entry in data:
