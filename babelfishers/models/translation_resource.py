@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from babelfishers.models.engine import Engine
 from babelfishers.utils.console_formater import ConsoleFormatter
 
+
 _PLACEHOLDER: str = "[source]"
 _logger: logging.Logger = logging.getLogger(__file__)
 

@@ -11,6 +11,7 @@ from babelfishers.models.glossary import Glossary
 from babelfishers.models.translation_resource import TranslationResource
 from babelfishers.utils.console_formater import ConsoleFormatter
 
+
 logger: logging.Logger = logging.getLogger(__name__)
 
 

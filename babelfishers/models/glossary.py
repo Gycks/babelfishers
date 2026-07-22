@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from babelfishers.core.supported_cultures import SUPPORTED_CULTURES
 from babelfishers.utils.console_formater import ConsoleFormatter
 
+
 _logger: logging.Logger = logging.getLogger(__file__)
 
 

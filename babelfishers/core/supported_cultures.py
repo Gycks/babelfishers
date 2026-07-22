@@ -1,6 +1,7 @@
 from babelfishers.models.culture import Culture
 from babelfishers.models.engine import Engine
 
+
 SUPPORTED_CULTURES: dict[str, Culture] = {
     lang.code: lang
     for lang in [
