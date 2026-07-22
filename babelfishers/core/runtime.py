@@ -5,6 +5,7 @@ from babelfishers.core.tm_store import TMStore
 from babelfishers.core.translation_pipeline import TranslationPipeline
 from babelfishers.models.app_config import AppConfig
 from babelfishers.utils.console_formater import ConsoleFormatter
+from babelfishers.utils.utils import get_translation_store_storage_path
 
 
 class Runtime:
@@ -12,7 +13,7 @@ class Runtime:
         self._logger: logging.Logger = logging.getLogger(__file__)
         self._config: AppConfig = config
         self._dry_run: bool = dry_run
-        self._tm_store: TMStore = TMStore()
+        self._tm_store: TMStore = TMStore(get_translation_store_storage_path())
 
     def orchestrate_translation_workflow(self) -> None:
         for resource in self._config.resources:
