@@ -94,6 +94,3 @@ class AppConfig(BaseModel):
             raw_config = tomllib.load(reader)
 
         return cls._parse_configuration(raw_config)
-
-
-s = AppConfig.load(Path("/Users/gycks/Desktop/Projects/Babel Fishers/babelfishers.toml"))
