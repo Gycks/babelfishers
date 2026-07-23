@@ -10,6 +10,7 @@ class TranslationUnit(BaseModel):
     write_back: Callable[[str], None]
     translated_text: str = ""
     context_hint: str | None = None
+    skip_translation: bool = False
     placeholder_map: dict[str, str] = Field(default_factory=dict)
 
 
