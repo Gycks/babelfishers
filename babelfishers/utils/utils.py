@@ -25,3 +25,8 @@ def get_working_space() -> Path:
 def get_translation_store_storage_path() -> Path:
     path = get_working_space()
     return path.joinpath("store.sqlite")
+
+
+def get_app_config_storage_path() -> Path:
+    path = get_working_space()
+    return path.joinpath(f"{APPLICATION_NAME}.toml")
