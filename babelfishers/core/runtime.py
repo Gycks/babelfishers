@@ -26,6 +26,12 @@ class Runtime:
             futures: dict[Future[None], str] = {}
 
             for resource in self._config.resources:
+                if len(resource.paths) == 0:
+                    self._logger.warning(
+                        ConsoleFormatter.warning(f"Skipping bucket: '{resource.resource_type}'.Reason: Bucket empty")
+                    )
+                    continue
+
                 parser = ParserFactory.create(resource.resource_type)
 
                 engines = []
@@ -63,6 +69,7 @@ class Runtime:
                     future.result()
                 except Exception as exe:
                     self._logger.exception(ConsoleFormatter.error(f"{job_label} -> Pipeline failed"), exc_info=exe)
+                    raise
 
     def _run_single_locale(
         self,
