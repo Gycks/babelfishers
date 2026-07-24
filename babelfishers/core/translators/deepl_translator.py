@@ -13,6 +13,7 @@ from babelfishers.core.translators.registry import register
 from babelfishers.core.translators.translator import Translator
 from babelfishers.models.engine import Engine
 from babelfishers.models.translations import TranslationUnit
+from babelfishers.utils.console_formater import ConsoleFormatter
 from babelfishers.utils.utils import get_env
 
 
@@ -36,20 +37,20 @@ class DeeplTranslator(Translator):
                     context=unit.context_hint,
                 )
             except QuotaExceededException:
-                self._logger.error(f"DeepL quota exceeded, skipping unit '{unit.key}'")
+                self._logger.error(ConsoleFormatter.error("DeepL quota exceeded, skipping unit"))
                 raise
             except TooManyRequestsException:
-                self._logger.error(f"DeepL rate limit exceeded after internal retries, unit '{unit.key}'")
+                self._logger.error(ConsoleFormatter.error("DeepL rate limit exceeded after internal retries"))
                 raise
             except AuthorizationException:
-                self._logger.error("DeepL authorization failed — check API key")
+                self._logger.error(ConsoleFormatter.error("DeepL authorization failed — check API key"))
                 raise
             except DeepLException as e:
-                self._logger.error(f"DeepL API error for unit '{unit.key}': {e}")
+                self._logger.error(ConsoleFormatter.error(f"DeepL API error for unit: {e}"))
                 raise
 
             if isinstance(result, list):
-                raise TypeError("Invalid DeepL response format type")
+                raise TypeError(ConsoleFormatter.error("Invalid DeepL response format type"))
 
             unit.translated_text = result.text
             unit.write_back(result.text)
