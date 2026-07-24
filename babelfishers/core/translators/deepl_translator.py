@@ -9,8 +9,8 @@ from deepl import (
     TooManyRequestsException,
 )
 
-from babelfishers.core.translators.translator import Translator
 from babelfishers.core.translators.registry import register
+from babelfishers.core.translators.translator import Translator
 from babelfishers.models.engine import Engine
 from babelfishers.models.translations import TranslationUnit
 from babelfishers.utils.utils import get_env

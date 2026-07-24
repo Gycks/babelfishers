@@ -1,1 +1,1 @@
-from .deepl_translator import DeeplTranslator
+from .deepl_translator import DeeplTranslator  # noqa: F401

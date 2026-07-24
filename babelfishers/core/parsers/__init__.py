@@ -1,1 +1,1 @@
-from .json_parser import JSONParser
+from . import json_parser  # noqa: F401

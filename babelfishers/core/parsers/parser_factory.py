@@ -1,6 +1,6 @@
 from babelfishers.core.parsers.parser import Parser
-from babelfishers.models.translation_resource import TranslationResourceType
 from babelfishers.core.parsers.registry import parsers_registry
+from babelfishers.models.translation_resource import TranslationResourceType
 
 
 class ParserFactory:

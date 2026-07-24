@@ -1,5 +1,5 @@
-from babelfishers.core.translators.translator import Translator
 from babelfishers.core.translators.registry import translators_registry
+from babelfishers.core.translators.translator import Translator
 from babelfishers.models.engine import Engine
 
 
