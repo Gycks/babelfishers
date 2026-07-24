@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from babelfishers.core.parsers.parser import Parser
-from babelfishers.core.parsers.parser_factory import register
+from babelfishers.core.parsers.registry import register
 from babelfishers.models.translation_resource import TranslationResourceType
 from babelfishers.models.translations import ParseResult, TranslationUnit
 from babelfishers.utils.console_formater import ConsoleFormatter

@@ -17,7 +17,7 @@ def get_env(name: str) -> str:
 
 def get_working_space() -> Path:
     path = Path.cwd().resolve()
-    path.joinpath(APPLICATION_NAME)
+    path = path.joinpath(f".{APPLICATION_NAME}")
     path.mkdir(exist_ok=True)
     return path
 

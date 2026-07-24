@@ -1,18 +1,6 @@
-from collections.abc import Callable
-
 from babelfishers.core.parsers.parser import Parser
 from babelfishers.models.translation_resource import TranslationResourceType
-
-
-_registry: dict[TranslationResourceType, type] = {}
-
-
-def register(parser_type: TranslationResourceType) -> Callable[[type], type]:
-    def decorator(cls: type) -> type:
-        _registry[parser_type] = cls
-        return cls
-
-    return decorator
+from babelfishers.core.parsers.registry import parsers_registry
 
 
 class ParserFactory:
@@ -28,7 +16,7 @@ class ParserFactory:
             An instance of the Parser associated with that type.
         """
 
-        cls = _registry.get(parser_type)
+        cls = parsers_registry.get(parser_type)
         if cls is None:
             raise ValueError(f"No class registered for {parser_type}")
 

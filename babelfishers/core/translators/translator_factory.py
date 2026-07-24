@@ -1,18 +1,6 @@
-from collections.abc import Callable
-
 from babelfishers.core.translators.translator import Translator
+from babelfishers.core.translators.registry import translators_registry
 from babelfishers.models.engine import Engine
-
-
-_registry: dict[Engine, type] = {}
-
-
-def register(engine_type: Engine) -> Callable[[type], type]:
-    def decorator(cls: type) -> type:
-        _registry[engine_type] = cls
-        return cls
-
-    return decorator
 
 
 class TranslatorFactory:
@@ -28,7 +16,7 @@ class TranslatorFactory:
             An instance of the translator associated with engine type.
         """
 
-        cls = _registry.get(engine_type)
+        cls = translators_registry.get(engine_type)
         if cls is None:
             raise ValueError(f"No class registered for {engine_type}")
 
