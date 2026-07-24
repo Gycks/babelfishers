@@ -3,15 +3,17 @@ from pathlib import Path
 
 from pydantic import BaseModel, Field
 
+from babelfishers.models.translation_resource import TranslationResourceType
+
 
 class TranslationUnit(BaseModel):
+    unit_type: TranslationResourceType
     key: str
     source_text: str
     write_back: Callable[[str], None]
     translated_text: str = ""
     context_hint: str | None = None
     skip_translation: bool = False
-    placeholder_map: dict[str, str] = Field(default_factory=dict)
 
 
 class ParseResult(BaseModel):

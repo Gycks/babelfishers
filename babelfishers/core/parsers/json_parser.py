@@ -58,6 +58,7 @@ class JSONParser(Parser):
 
                     units.append(
                         TranslationUnit(
+                            unit_type=TranslationResourceType.JSON,
                             key=full_key,
                             source_text=v,
                             write_back=make_write_back(node, k),

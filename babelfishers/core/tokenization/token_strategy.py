@@ -11,7 +11,7 @@ class TokenStrategy(ABC):
     needs_restore: bool = True
 
     @abstractmethod
-    def make_token(self, index: int) -> str:
+    def make_token(self, index: int, namespace: str) -> str:
         """A short, unique id for this span, scoped to one unit."""
 
     @abstractmethod

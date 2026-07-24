@@ -11,4 +11,3 @@ class PlaceholderSpan(BaseModel):
     end: int
     matched_text: str
     category: str
-    opaque: bool = True

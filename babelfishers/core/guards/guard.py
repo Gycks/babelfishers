@@ -1,9 +1,18 @@
 from abc import ABC, abstractmethod
 
+from babelfishers.core.tokenization.factory import TokenStrategyFactory
+from babelfishers.core.tokenization.token_strategy import TokenStrategy
+from babelfishers.models.engine import Engine
+from babelfishers.models.guards import ProtectedEntry
 from babelfishers.models.translations import TranslationUnit
 
 
 class ProtectionGuard(ABC):
+    def __init__(self, engine: Engine, namespace: str) -> None:
+        self._namespace: str = namespace
+        self._strategy: TokenStrategy = TokenStrategyFactory.get_strategy_for(engine)
+        self._token_maps: dict[str, list[ProtectedEntry]] = {}
+
     """
     Abstract interface for protecting and restoring translation data.
 
@@ -25,7 +34,6 @@ class ProtectionGuard(ABC):
         """
         raise NotImplementedError("The abstract method 'protect()' must be implemented by subclasses.")
 
-    @abstractmethod
     def restore(self, data: list[TranslationUnit]) -> bool:
         """
         Restore protected translation units content after translation.
@@ -38,4 +46,20 @@ class ProtectionGuard(ABC):
         Return:
             True, if the process was successful.
         """
-        raise NotImplementedError("The abstract method 'restore()' must be implemented by subclasses.")
+        all_clean = True
+        for unit in data:
+            entries = self._token_maps.pop(unit.key, None)
+            if not entries or unit.translated_text is None:
+                continue
+
+            text = unit.translated_text
+            if self._strategy.needs_restore:
+                for entry in entries:
+                    text = self._strategy.restore_text(text, entry.token, entry.replacement)
+
+            for entry in entries:
+                if self._strategy.leftover_pattern(entry.token).search(text):
+                    all_clean = False
+
+            unit.translated_text = text
+        return all_clean

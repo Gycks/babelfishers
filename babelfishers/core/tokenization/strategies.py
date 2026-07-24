@@ -5,8 +5,8 @@ from babelfishers.core.tokenization.token_strategy import TokenStrategy
 
 
 class DefaultMaskStrategy(TokenStrategy):
-    def make_token(self, index: int) -> str:
-        return f"zzgls{token_hex(4)}zz{index}zz"
+    def make_token(self, index: int, namespace: str) -> str:
+        return f"zz{namespace}{token_hex(4)}zz{index}zz"
 
     def build_span(self, token: str, source_term: str, replacement: str) -> str:
         return token
@@ -18,8 +18,8 @@ class DefaultMaskStrategy(TokenStrategy):
 class _WrapperTagStrategy(TokenStrategy):
     tag = "gls"
 
-    def make_token(self, index: int) -> str:
-        return f"t{index}"
+    def make_token(self, index: int, namespace: str) -> str:
+        return f"{namespace}{index}"
 
     def build_span(self, token: str, source_term: str, replacement: str) -> str:
         return f'<{self.tag} id="{token}">{replacement}</{self.tag}>'
@@ -57,8 +57,8 @@ class InstructionTagStrategy(_WrapperTagStrategy):
 class DictionaryMarkupStrategy(TokenStrategy):
     needs_restore = False
 
-    def make_token(self, index: int) -> str:
-        return f"t{index}"
+    def make_token(self, index: int, namespace: str) -> str:
+        return f"{namespace}{index}"
 
     def build_span(self, token: str, source_term: str, replacement: str) -> str:
         safe_source = source_term.replace('"', "&quot;")
