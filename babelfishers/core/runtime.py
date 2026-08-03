@@ -1,6 +1,5 @@
 import logging
 from concurrent.futures import Future, ThreadPoolExecutor, as_completed
-from copy import deepcopy
 from pathlib import Path
 
 from babelfishers.core.parsers.parser_factory import ParserFactory
@@ -14,11 +13,13 @@ from babelfishers.utils.utils import get_translation_store_storage_path
 
 
 class Runtime:
-    def __init__(self, config: AppConfig, dry_run: bool = False, max_workers: int = 8) -> None:
+    def __init__(
+        self, config: AppConfig, db_storage: Path | None = None, dry_run: bool = False, max_workers: int = 8
+    ) -> None:
         self._logger: logging.Logger = logging.getLogger(__file__)
         self._config: AppConfig = config
         self._dry_run: bool = dry_run
-        self._tm_store: TMStore = TMStore(get_translation_store_storage_path())
+        self._tm_store: TMStore = TMStore(db_storage or get_translation_store_storage_path())
         self._max_workers = max_workers
 
     def orchestrate_translation_workflow(self) -> None:
@@ -28,7 +29,7 @@ class Runtime:
             for resource in self._config.resources:
                 if len(resource.paths) == 0:
                     self._logger.warning(
-                        ConsoleFormatter.warning(f"Skipping bucket: '{resource.resource_type}'.Reason: Bucket empty")
+                        ConsoleFormatter.warning(f"Skipping bucket: '{resource.resource_type}'. Reason: Bucket empty")
                     )
                     continue
 
@@ -56,7 +57,7 @@ class Runtime:
                         future = executor.submit(
                             self._run_single_locale,
                             pipeline,
-                            deepcopy(parse_result),
+                            parser.clone(parse_result),
                             resource_path,
                             locale,
                             source_path,

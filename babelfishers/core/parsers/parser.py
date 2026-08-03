@@ -28,3 +28,14 @@ class Parser(ABC):
             units and the metadata required for efficient write-back.
         """
         raise NotImplementedError("The abstract method 'parse()' must be implemented by subclasses.")
+
+    @abstractmethod
+    def clone(self, data: ParseResult) -> ParseResult:
+        """Clones a `ParseResult` object instance.
+
+        Args:
+            data: The `ParseResult` object.
+
+        Returns:
+            A cloned copy of tje `ParseResult` object.
+        """

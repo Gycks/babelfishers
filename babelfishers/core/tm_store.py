@@ -1,5 +1,6 @@
 import hashlib
 import sqlite3
+import threading
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -30,6 +31,7 @@ class TMStore:
     def __init__(self, db_path: Path) -> None:
         self._db_path = db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._write_lock = threading.Lock()
         self._bootstrap()
 
     def lookup(
@@ -41,9 +43,6 @@ class TMStore:
         """Fetches the cached translation for the source text in the specified
         target locale.
 
-        Updates last_used on every hit so that prune_keep_newest() reflects
-        actual recency of use.
-
         Args:
             source_text: The original source string.
             source_locale: The source locale.
@@ -54,7 +53,6 @@ class TMStore:
         """
 
         key = _make_key(source_text, source_locale, target_locale)
-        now = _now()
 
         with self._conn() as conn:
             row = conn.execute(
@@ -62,14 +60,24 @@ class TMStore:
                 (key,),
             ).fetchone()
 
-            if row is None:
-                return None
+        return None if row is None else cast(str, row[0])
 
-            conn.execute(
+    def bump_last_used_for_keys(self, keys: list[str]) -> None:
+        """Bump last_used for a batch of cache keys in a single write transaction.
+
+        Args:
+            keys: Cache keys.
+        """
+
+        if not keys:
+            return
+
+        now = _now()
+        with self._write_lock, self._conn() as conn:
+            conn.executemany(
                 "UPDATE translation_memory SET last_used = ? WHERE key = ?",
-                (now, key),
+                [(now, key) for key in keys],
             )
-            return cast(str, row[0])
 
     def store(
         self,
@@ -95,7 +103,7 @@ class TMStore:
         key = _make_key(source_text, source_locale, target_locale)
         now = _now()
 
-        with self._conn() as conn:
+        with self._write_lock, self._conn() as conn:
             conn.execute(
                 """
                 INSERT INTO translation_memory (key, translated, engine, created_at, last_used)
@@ -128,7 +136,7 @@ class TMStore:
             (_make_key(src, src_locale, tgt_locale), translated, engine, now, now)
             for src, src_locale, tgt_locale, translated in entries
         ]
-        with self._conn() as conn:
+        with self._write_lock, self._conn() as conn:
             conn.executemany(
                 """
                 INSERT INTO translation_memory (key, translated, engine, created_at, last_used)
@@ -168,7 +176,7 @@ class TMStore:
         """
 
         cutoff = _now() - (days * 86_400)
-        with self._conn() as conn:
+        with self._write_lock, self._conn() as conn:
             cursor = conn.execute(
                 "DELETE FROM translation_memory WHERE last_used < ?",
                 (cutoff,),
@@ -185,7 +193,7 @@ class TMStore:
             Number of entries deleted.
         """
 
-        with self._conn() as conn:
+        with self._write_lock, self._conn() as conn:
             cursor = conn.execute(
                 "DELETE FROM translation_memory WHERE engine = ?",
                 (engine,),
@@ -202,7 +210,7 @@ class TMStore:
             Number of entries deleted.
         """
 
-        with self._conn() as conn:
+        with self._write_lock, self._conn() as conn:
             total = conn.execute("SELECT COUNT(*) FROM translation_memory").fetchone()[0]
 
             if total <= keep:
@@ -223,15 +231,16 @@ class TMStore:
 
     def vacuum(self) -> None:
         """Reclaim disk space after pruning."""
-        conn = sqlite3.connect(self._db_path)
-        try:
-            conn.execute("VACUUM")
-        finally:
-            conn.close()
+        with self._write_lock:
+            conn = sqlite3.connect(self._db_path)
+            try:
+                conn.execute("VACUUM")
+            finally:
+                conn.close()
 
     def clear(self) -> None:
         """Wipe the entire store."""
-        with self._conn() as conn:
+        with self._write_lock, self._conn() as conn:
             conn.execute("DELETE FROM translation_memory")
 
     # ======================================== #
@@ -260,6 +269,10 @@ class TMStore:
             raise
         finally:
             conn.close()
+
+    @staticmethod
+    def make_key(source_text: str, source_locale: str, target_locale: str) -> str:
+        return _make_key(source_text, source_locale, target_locale)
 
 
 def _make_key(source_text: str, source_locale: str, target_locale: str) -> str:

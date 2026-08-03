@@ -1,7 +1,8 @@
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from babelfishers.models.translation_resource import TranslationResourceType
 
@@ -17,6 +18,10 @@ class TranslationUnit(BaseModel):
 
 
 class ParseResult(BaseModel):
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    document: Any
+
     source_path: Path
     units: list[TranslationUnit]
     save: Callable[[Path], None]

@@ -48,6 +48,7 @@ class TranslationPipeline:
                 - A list of translation units not found in the cache.
         """
         hits = []
+        hit_keys = []
         misses = []
 
         for unit in units:
@@ -55,8 +56,11 @@ class TranslationPipeline:
             if cache is not None:
                 unit.translated_text = cache
                 hits.append(unit)
+                hit_keys.append(TMStore.make_key(unit.source_text, source, target))
             else:
                 misses.append(unit)
+
+        self._translation_store.bump_last_used_for_keys(hit_keys)
 
         return hits, misses
 
@@ -73,10 +77,11 @@ class TranslationPipeline:
             self._logger.info(ConsoleFormatter.info(f"Using translation engine: {translator.engine}"))
 
             placeholder_guard = PlaceholderGuard(engine)
-            dataset = placeholder_guard.protect(units)
+            protected_units = placeholder_guard.protect(units)
 
             for _ in range(2):
                 try:
+                    dataset = protected_units
                     glossary_guard: GlossaryGuard | None = None
                     if self._glossary:
                         glossary_guard = GlossaryGuard(
@@ -84,7 +89,7 @@ class TranslationPipeline:
                             target_locale,
                             translator.engine,
                         )
-                        dataset = glossary_guard.protect(dataset)
+                        dataset = glossary_guard.protect(protected_units)
 
                     translations = translator.translate(
                         dataset,
