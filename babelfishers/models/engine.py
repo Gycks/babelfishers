@@ -6,14 +6,14 @@ class Engine(StrEnum):
     DeepL = "deepl"
     Azure = "azure"
     Anthropic = "anthropic"
-    OpenAI = "open-ai"
+    OpenAI = "openai"
     GoogleTranslate = "google-translate"
     LibreTranslate = "libre-translate"
 
     @classmethod
     def validate(cls, name: str) -> Self | None:
         try:
-            return Engine(name)
+            return Engine(name.lower().strip())
 
         except ValueError:
             return None

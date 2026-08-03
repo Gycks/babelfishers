@@ -33,11 +33,14 @@ class AppConfig(BaseModel):
             raise ValueError("Invalid configuration file. Source locale not set.")
 
         if source_locale not in SUPPORTED_CULTURES.keys():
-            raise ValueError("Invalid configuration file. Source locale {source_locale} is not supported.")
+            raise ValueError(f"Invalid configuration file. Source locale {source_locale} is not supported.")
 
         target_locales = locale_block.get("targets")
         if target_locales is None or len(target_locales) == 0:
             raise ValueError("Invalid configuration file. Target locales not set.")
+
+        target_locales = list(set(target_locales))
+        target_locales.remove(source_locale) if source_locale in target_locales else None
 
         if not set(target_locales).issubset(SUPPORTED_CULTURES):
             raise ValueError("Invalid configuration file. Targets locale is malformed.")
