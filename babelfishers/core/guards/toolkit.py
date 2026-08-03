@@ -22,8 +22,10 @@ def _find_brace_spans(text: str) -> list[PlaceholderSpan]:
     n = len(text)
     while i < n:
         ch = text[i]
-        if ch == "'":
-            # ICU quoted-literal span: skip to the matching apostrophe.
+        if ch == "'" and i + 1 < n and text[i + 1] in "{}#'|":
+            # ICU quoted-literal span: only an apostrophe immediately followed by a
+            # syntax character starts one (real ICU rule). Plain apostrophes in
+            # ordinary text (contractions, possessives) must stay literal.
             j = text.find("'", i + 1)
             i = (j + 1) if j != -1 else n
             continue

@@ -48,7 +48,7 @@ class ProtectionGuard(ABC):
         """
         all_clean = True
         for unit in data:
-            entries = self._token_maps.pop(unit.key, None)
+            entries = self._token_maps.get(unit.key)
             if not entries or unit.translated_text is None:
                 continue
 

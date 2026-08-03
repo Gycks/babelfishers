@@ -29,11 +29,7 @@ class _WrapperTagStrategy(TokenStrategy):
             rf'<{self.tag}[^>]*id="{re.escape(token)}"[^>]*>(.*?)</{self.tag}>',
             re.DOTALL,
         )
-        text, n = pattern.subn(replacement, text)
-        if n:
-            return text
-        # tag got mangled but the bare token id survived somewhere
-        return text.replace(token, replacement)
+        return pattern.sub(replacement, text)
 
     def leftover_pattern(self, token: str) -> re.Pattern[str]:
         return re.compile(rf'<{self.tag}[^>]*id="{re.escape(token)}"')
