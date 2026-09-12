@@ -1093,6 +1093,23 @@ pymysql = ["pymysql"]
 sqlcipher = ["sqlcipher3_binary"]
 
 [[package]]
+name = "sqlmodel"
+version = "0.0.42"
+description = "SQLModel, SQL databases in Python, designed for simplicity, compatibility, and robustness."
+optional = false
+python-versions = ">=3.10"
+groups = ["main"]
+files = [
+    {file = "sqlmodel-0.0.42-py3-none-any.whl", hash = "sha256:a732dab1a40e5cbd6ac250cf2b12e8d9b1bf1a47edf27c34d612f359e8875c63"},
+    {file = "sqlmodel-0.0.42.tar.gz", hash = "sha256:9ecec2b6aa4c2aa58da39d2572e7bef4373419dcd6ec52973c07de7be2b1c516"},
+]
+
+[package.dependencies]
+pydantic = ">=2.11.0"
+SQLAlchemy = ">=2.0.14,<2.1.0"
+typing-extensions = ">=4.5.0"
+
+[[package]]
 name = "tomli"
 version = "2.4.1"
 description = "A lil' TOML parser"
@@ -1198,4 +1215,4 @@ zstd = ["backports-zstd (>=1.0.0) ; python_version < \"3.14\""]
 [metadata]
 lock-version = "2.1"
 python-versions = ">=3.10,<=3.14"
-content-hash = "c109c6c2f97153a37680f0c53c49040f6b7e90696f6555e5f624a85dbbe0fe9a"
+content-hash = "599a8679a6fcd67c64c92d8457ee1264938c163fff7d114548aa6592a96b0118"

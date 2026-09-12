@@ -1,28 +1,24 @@
 import hashlib
-import sqlite3
 import threading
 import time
-from collections.abc import Generator
-from contextlib import contextmanager
 from pathlib import Path
-from typing import cast
+from sqlite3 import Connection as SQLite3Connection
+
+from sqlalchemy import event, text
+from sqlalchemy.dialects.sqlite import insert as sqlite_upsert
+from sqlalchemy.engine import Engine
+from sqlalchemy.pool import ConnectionPoolEntry
+from sqlmodel import Field, Session, SQLModel, col, create_engine, delete, func, select, update
 
 from babelfishers.models.translations import StoreStats
 
 
-_CREATION_QUERY = """
-CREATE TABLE IF NOT EXISTS translation_memory (
-    key        TEXT    PRIMARY KEY,
-    translated TEXT    NOT NULL,
-    engine     TEXT    NOT NULL,
-    created_at INTEGER NOT NULL,
-    last_used  INTEGER NOT NULL
-);
-
-CREATE INDEX IF NOT EXISTS idx_last_used  ON translation_memory (last_used);
-CREATE INDEX IF NOT EXISTS idx_engine     ON translation_memory (engine);
-CREATE INDEX IF NOT EXISTS idx_created_at ON translation_memory (created_at);
-"""
+class TranslationMemory(SQLModel, table=True):
+    key: str = Field(primary_key=True)
+    translated: str
+    engine: str = Field(index=True)
+    created_at: int = Field(index=True)
+    last_used: int = Field(index=True)
 
 
 class TMStore:
@@ -32,7 +28,11 @@ class TMStore:
         self._db_path = db_path
         db_path.parent.mkdir(parents=True, exist_ok=True)
         self._write_lock = threading.Lock()
-        self._bootstrap()
+        self._engine: Engine = create_engine(
+            f"sqlite:///{db_path}", echo=False, connect_args={"check_same_thread": False}
+        )
+        event.listens_for(self._engine, "connect")(_set_sqlite_pragma)
+        SQLModel.metadata.create_all(self._engine)
 
     def lookup(
         self,
@@ -54,13 +54,9 @@ class TMStore:
 
         key = _make_key(source_text, source_locale, target_locale)
 
-        with self._conn() as conn:
-            row = conn.execute(
-                "SELECT translated FROM translation_memory WHERE key = ?",
-                (key,),
-            ).fetchone()
-
-        return None if row is None else cast(str, row[0])
+        with Session(self._engine) as session:
+            statement = select(TranslationMemory.translated).where(TranslationMemory.key == key)
+            return session.exec(statement).first()
 
     def bump_last_used_for_keys(self, keys: list[str]) -> None:
         """Bump last_used for a batch of cache keys in a single write transaction.
@@ -73,11 +69,10 @@ class TMStore:
             return
 
         now = _now()
-        with self._write_lock, self._conn() as conn:
-            conn.executemany(
-                "UPDATE translation_memory SET last_used = ? WHERE key = ?",
-                [(now, key) for key in keys],
-            )
+        with self._write_lock, Session(self._engine) as session:
+            statement = update(TranslationMemory).where(col(TranslationMemory.key).in_(keys)).values(last_used=now)
+            session.exec(statement)
+            session.commit()
 
     def store(
         self,
@@ -103,18 +98,21 @@ class TMStore:
         key = _make_key(source_text, source_locale, target_locale)
         now = _now()
 
-        with self._write_lock, self._conn() as conn:
-            conn.execute(
-                """
-                INSERT INTO translation_memory (key, translated, engine, created_at, last_used)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(key) DO UPDATE SET
-                    translated = excluded.translated,
-                    engine     = excluded.engine,
-                    last_used  = excluded.last_used
-                """,
-                (key, translated_text, engine, now, now),
-            )
+        statement = sqlite_upsert(TranslationMemory).values(
+            key=key, translated=translated_text, engine=engine, created_at=now, last_used=now
+        )
+        statement = statement.on_conflict_do_update(
+            index_elements=[TranslationMemory.key],
+            set_={
+                "translated": statement.excluded.translated,
+                "engine": statement.excluded.engine,
+                "last_used": statement.excluded.last_used,
+            },
+        )
+
+        with self._write_lock, Session(self._engine) as session:
+            session.exec(statement)
+            session.commit()
 
     def store_batch(
         self,
@@ -131,38 +129,57 @@ class TMStore:
             engine: Name of the engine that produced all entries in this batch.
         """
 
+        if not entries:
+            return
+
         now = _now()
         rows = [
-            (_make_key(src, src_locale, tgt_locale), translated, engine, now, now)
+            {
+                "key": _make_key(src, src_locale, tgt_locale),
+                "translated": translated,
+                "engine": engine,
+                "created_at": now,
+                "last_used": now,
+            }
             for src, src_locale, tgt_locale, translated in entries
         ]
-        with self._write_lock, self._conn() as conn:
-            conn.executemany(
-                """
-                INSERT INTO translation_memory (key, translated, engine, created_at, last_used)
-                VALUES (?, ?, ?, ?, ?)
-                ON CONFLICT(key) DO UPDATE SET
-                    translated = excluded.translated,
-                    engine     = excluded.engine,
-                    last_used  = excluded.last_used
-                """,
-                rows,
-            )
+
+        statement = sqlite_upsert(TranslationMemory).values(rows)
+        statement = statement.on_conflict_do_update(
+            index_elements=[TranslationMemory.key],
+            set_={
+                "translated": statement.excluded.translated,
+                "engine": statement.excluded.engine,
+                "last_used": statement.excluded.last_used,
+            },
+        )
+
+        with self._write_lock, Session(self._engine) as session:
+            session.exec(statement)
+            session.commit()
 
     def stats(self) -> StoreStats:
         """Return aggregate statistics about the store."""
-        with self._conn() as conn:
-            row = conn.execute("SELECT COUNT(*), MIN(created_at), MAX(last_used) FROM translation_memory").fetchone()
-            engine_rows = conn.execute("SELECT engine, COUNT(*) FROM translation_memory GROUP BY engine").fetchall()
+        with Session(self._engine) as session:
+            total, oldest, newest = session.exec(
+                select(
+                    func.count(),
+                    func.min(TranslationMemory.created_at),
+                    func.max(TranslationMemory.last_used),
+                )
+            ).one()
+            engine_rows = session.exec(
+                select(TranslationMemory.engine, func.count()).group_by(TranslationMemory.engine)
+            ).all()
 
         size_bytes = self._db_path.stat().st_size if self._db_path.exists() else 0
 
         return StoreStats(
-            total_entries=row[0] or 0,
-            oldest_entry_ts=row[1],
-            newest_used_ts=row[2],
+            total_entries=total or 0,
+            oldest_entry_ts=oldest,
+            newest_used_ts=newest,
             size_bytes=size_bytes,
-            by_engine={r[0]: r[1] for r in engine_rows},
+            by_engine=dict(engine_rows),
         )
 
     def prune_older_than(self, days: int) -> int:
@@ -176,12 +193,10 @@ class TMStore:
         """
 
         cutoff = _now() - (days * 86_400)
-        with self._write_lock, self._conn() as conn:
-            cursor = conn.execute(
-                "DELETE FROM translation_memory WHERE last_used < ?",
-                (cutoff,),
-            )
-            return cursor.rowcount
+        with self._write_lock, Session(self._engine) as session:
+            result = session.exec(delete(TranslationMemory).where(col(TranslationMemory.last_used) < cutoff))
+            session.commit()
+            return result.rowcount
 
     def prune_by_engine(self, engine: str) -> int:
         """Delete all entries produced by a specific engine.
@@ -193,12 +208,10 @@ class TMStore:
             Number of entries deleted.
         """
 
-        with self._write_lock, self._conn() as conn:
-            cursor = conn.execute(
-                "DELETE FROM translation_memory WHERE engine = ?",
-                (engine,),
-            )
-            return cursor.rowcount
+        with self._write_lock, Session(self._engine) as session:
+            result = session.exec(delete(TranslationMemory).where(col(TranslationMemory.engine) == engine))
+            session.commit()
+            return result.rowcount
 
     def prune_keep_newest(self, keep: int) -> int:
         """Keep only the `keep` most recently used entries, deleting the rest.
@@ -210,69 +223,38 @@ class TMStore:
             Number of entries deleted.
         """
 
-        with self._write_lock, self._conn() as conn:
-            total = conn.execute("SELECT COUNT(*) FROM translation_memory").fetchone()[0]
+        with self._write_lock, Session(self._engine) as session:
+            total = session.exec(select(func.count()).select_from(TranslationMemory)).one()
 
             if total <= keep:
                 return 0
 
-            cursor = conn.execute(
-                """
-                DELETE FROM translation_memory
-                WHERE key NOT IN (
-                    SELECT key FROM translation_memory
-                    ORDER BY last_used DESC
-                    LIMIT ?
-                )
-                """,
-                (keep,),
-            )
-            return cursor.rowcount
+            keep_keys = select(TranslationMemory.key).order_by(col(TranslationMemory.last_used).desc()).limit(keep)
+            result = session.exec(delete(TranslationMemory).where(col(TranslationMemory.key).not_in(keep_keys)))
+            session.commit()
+            return result.rowcount
 
     def vacuum(self) -> None:
         """Reclaim disk space after pruning."""
-        with self._write_lock:
-            conn = sqlite3.connect(self._db_path)
-            try:
-                conn.execute("VACUUM")
-            finally:
-                conn.close()
+        with self._write_lock, self._engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            connection.execute(text("VACUUM"))
 
     def clear(self) -> None:
         """Wipe the entire store."""
-        with self._write_lock, self._conn() as conn:
-            conn.execute("DELETE FROM translation_memory")
-
-    # ======================================== #
-    # =============== Internal =============== #
-    # ======================================== #
-
-    def _bootstrap(self) -> None:
-        conn = sqlite3.connect(self._db_path)
-        try:
-            conn.execute("PRAGMA journal_mode=WAL")
-            conn.execute("PRAGMA synchronous=NORMAL")
-            conn.executescript(_CREATION_QUERY)
-            conn.commit()
-        finally:
-            conn.close()
-
-    @contextmanager
-    def _conn(self) -> Generator[sqlite3.Connection, None, None]:
-        conn = sqlite3.connect(self._db_path)
-        conn.execute("PRAGMA synchronous=NORMAL")
-        try:
-            yield conn
-            conn.commit()
-        except Exception:
-            conn.rollback()
-            raise
-        finally:
-            conn.close()
+        with self._write_lock, Session(self._engine) as session:
+            session.exec(delete(TranslationMemory))
+            session.commit()
 
     @staticmethod
     def make_key(source_text: str, source_locale: str, target_locale: str) -> str:
         return _make_key(source_text, source_locale, target_locale)
+
+
+def _set_sqlite_pragma(dbapi_connection: SQLite3Connection, connection_record: ConnectionPoolEntry) -> None:
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.execute("PRAGMA synchronous=NORMAL")
+    cursor.close()
 
 
 def _make_key(source_text: str, source_locale: str, target_locale: str) -> str:

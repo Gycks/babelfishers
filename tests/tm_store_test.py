@@ -1,8 +1,9 @@
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from sqlmodel import Session, select
 
-from babelfishers.core.tm_store import TMStore
+from babelfishers.core.tm_store import TMStore, TranslationMemory
 from babelfishers.models.translations import StoreStats
 
 
@@ -12,11 +13,22 @@ def store(tmp_path):
 
 
 def _insert_row(store, key, translated="translated", engine="deepl", created_at=0, last_used=0):
-    with store._write_lock, store._conn() as conn:
-        conn.execute(
-            "INSERT INTO translation_memory (key, translated, engine, created_at, last_used) VALUES (?, ?, ?, ?, ?)",
-            (key, translated, engine, created_at, last_used),
+    with store._write_lock, Session(store._engine) as session:
+        session.add(
+            TranslationMemory(
+                key=key,
+                translated=translated,
+                engine=engine,
+                created_at=created_at,
+                last_used=last_used,
+            )
         )
+        session.commit()
+
+
+def _all_rows(store):
+    with Session(store._engine) as session:
+        return session.exec(select(TranslationMemory)).all()
 
 
 class TestTMStoreLookupAndStore:
@@ -45,10 +57,9 @@ class TestTMStoreLookupAndStore:
         monkeypatch.setattr("babelfishers.core.tm_store._now", lambda: 2000)
         store.store("Hello", "en", "fr", "Salut", "google-translate")
 
-        with store._conn() as conn:
-            row = conn.execute("SELECT translated, engine, created_at, last_used FROM translation_memory").fetchone()
+        row = _all_rows(store)[0]
 
-        assert row == ("Salut", "google-translate", 1000, 2000)
+        assert (row.translated, row.engine, row.created_at, row.last_used) == ("Salut", "google-translate", 1000, 2000)
 
     def test_store_upsert_bumps_last_used_on_conflict(self, store, monkeypatch):
         monkeypatch.setattr("babelfishers.core.tm_store._now", lambda: 1000)
@@ -57,10 +68,7 @@ class TestTMStoreLookupAndStore:
         monkeypatch.setattr("babelfishers.core.tm_store._now", lambda: 5000)
         store.store("Hello", "en", "fr", "Bonjour", "deepl")
 
-        with store._conn() as conn:
-            last_used = conn.execute("SELECT last_used FROM translation_memory").fetchone()[0]
-
-        assert last_used == 5000
+        assert _all_rows(store)[0].last_used == 5000
 
 
 class TestTMStoreBatchAndBumping:
@@ -82,6 +90,11 @@ class TestTMStoreBatchAndBumping:
 
         assert store.lookup("Hello", "en", "fr") == "Salut"
 
+    def test_store_batch_is_a_no_op_for_empty_entries(self, store):
+        store.store_batch([], "deepl")
+
+        assert store.stats().total_entries == 0
+
     def test_bump_last_used_for_keys_updates_only_the_given_keys(self, store, monkeypatch):
         monkeypatch.setattr("babelfishers.core.tm_store._now", lambda: 1000)
         store.store("Hello", "en", "fr", "Bonjour", "deepl")
@@ -91,8 +104,7 @@ class TestTMStoreBatchAndBumping:
         key = TMStore.make_key("Hello", "en", "fr")
         store.bump_last_used_for_keys([key])
 
-        with store._conn() as conn:
-            rows = dict(conn.execute("SELECT key, last_used FROM translation_memory").fetchall())
+        rows = {row.key: row.last_used for row in _all_rows(store)}
 
         other_key = TMStore.make_key("Bye", "en", "fr")
         assert rows[key] == 9000
@@ -162,8 +174,7 @@ class TestTMStorePruning:
         deleted = store.prune_older_than(5)
 
         assert deleted == 1
-        with store._conn() as conn:
-            remaining = {row[0] for row in conn.execute("SELECT key FROM translation_memory")}
+        remaining = {row.key for row in _all_rows(store)}
         assert remaining == {"recent-key"}
 
     def test_prune_older_than_returns_zero_when_nothing_is_old_enough(self, store, monkeypatch):
@@ -179,8 +190,7 @@ class TestTMStorePruning:
         deleted = store.prune_by_engine("deepl")
 
         assert deleted == 1
-        with store._conn() as conn:
-            remaining = {row[0] for row in conn.execute("SELECT key FROM translation_memory")}
+        remaining = {row.key for row in _all_rows(store)}
         assert remaining == {"k2"}
 
     def test_prune_keep_newest_retains_only_the_n_most_recently_used(self, store):
@@ -191,8 +201,7 @@ class TestTMStorePruning:
         deleted = store.prune_keep_newest(2)
 
         assert deleted == 1
-        with store._conn() as conn:
-            remaining = {row[0] for row in conn.execute("SELECT key FROM translation_memory")}
+        remaining = {row.key for row in _all_rows(store)}
         assert remaining == {"middle", "newest"}
 
     def test_prune_keep_newest_is_a_no_op_when_total_is_at_or_below_keep(self, store):
@@ -201,8 +210,7 @@ class TestTMStorePruning:
         deleted = store.prune_keep_newest(5)
 
         assert deleted == 0
-        with store._conn() as conn:
-            remaining = {row[0] for row in conn.execute("SELECT key FROM translation_memory")}
+        remaining = {row.key for row in _all_rows(store)}
         assert remaining == {"only-key"}
 
     def test_clear_removes_all_entries(self, store):
@@ -212,6 +220,16 @@ class TestTMStorePruning:
         store.clear()
 
         assert store.stats().total_entries == 0
+
+
+class TestTMStoreVacuum:
+    def test_vacuum_runs_without_error_and_keeps_data_intact(self, store):
+        store.store("Hello", "en", "fr", "Bonjour", "deepl")
+        store.prune_by_engine("nonexistent")
+
+        store.vacuum()
+
+        assert store.lookup("Hello", "en", "fr") == "Bonjour"
 
 
 class TestTMStoreConcurrency:
@@ -228,3 +246,22 @@ class TestTMStoreConcurrency:
         assert stats.total_entries == n
         for i in range(n):
             assert store.lookup(f"text-{i}", "en", "fr") == f"translated-{i}"
+
+    def test_concurrent_bump_last_used_for_keys_from_multiple_threads_do_not_lose_writes(self, store, monkeypatch):
+        n = 50
+        monkeypatch.setattr("babelfishers.core.tm_store._now", lambda: 1000)
+        for i in range(n):
+            store.store(f"text-{i}", "en", "fr", f"translated-{i}", "deepl")
+
+        monkeypatch.setattr("babelfishers.core.tm_store._now", lambda: 9000)
+
+        def _bump(i: int) -> None:
+            key = TMStore.make_key(f"text-{i}", "en", "fr")
+            store.bump_last_used_for_keys([key])
+
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            list(executor.map(_bump, range(n)))
+
+        rows = {row.key: row.last_used for row in _all_rows(store)}
+        for i in range(n):
+            assert rows[TMStore.make_key(f"text-{i}", "en", "fr")] == 9000

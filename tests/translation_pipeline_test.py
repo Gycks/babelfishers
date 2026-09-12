@@ -2,7 +2,9 @@ from pathlib import Path
 
 import pytest
 
-from babelfishers.core.tm_store import TMStore
+from sqlmodel import Session, select
+
+from babelfishers.core.tm_store import TMStore, TranslationMemory
 from babelfishers.core.translation_pipeline import TranslationPipeline
 from babelfishers.core.translators.registry import translators_registry
 from babelfishers.core.translators.translator import Translator
@@ -157,10 +159,10 @@ class TestTranslationPipelineCacheHandling:
         pipeline.run(parse_result, "en", "fr", Path("/tmp/out.json"))
 
         key = TMStore.make_key("Hello", "en", "fr")
-        with tm_store._conn() as conn:
-            last_used = conn.execute(
-                "SELECT last_used FROM translation_memory WHERE key = ?", (key,)
-            ).fetchone()[0]
+        with Session(tm_store._engine) as session:
+            last_used = session.exec(
+                select(TranslationMemory.last_used).where(TranslationMemory.key == key)
+            ).one()
         assert last_used == 9000
 
 
