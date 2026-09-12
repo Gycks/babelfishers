@@ -145,6 +145,13 @@ class TestJSONParserParse:
 
         assert json.loads(destination.read_text(encoding="utf-8")) == {"greeting": "Hello"}
 
+    def test_raises_value_error_when_file_extension_is_not_json(self, parser, tmp_path):
+        invalid_file = tmp_path / "source.html"
+        invalid_file.write_text("<html><body>Hello</body></html>", encoding="utf-8")
+
+        with pytest.raises(ValueError, match="Invalid file extension"):
+            parser.parse(invalid_file, [])
+
 
 class TestJSONParserClone:
     def test_clone_document_is_a_deep_copy_independent_from_original(self, parser, write_json):
