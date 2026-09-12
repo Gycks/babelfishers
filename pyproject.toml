@@ -14,7 +14,8 @@ dependencies = [
     "sqlalchemy (>=2.0.51,<3.0.0)",
     "pytest (>=9.1.1,<10.0.0)",
     "azure-ai-translation-text (>=2.0.0,<3.0.0)",
-    "sqlmodel (>=0.0.42,<0.0.43)"
+    "sqlmodel (>=0.0.42,<0.0.43)",
+    "beautifulsoup4 (>=4.15.0,<5.0.0)"
 ]
 
 
