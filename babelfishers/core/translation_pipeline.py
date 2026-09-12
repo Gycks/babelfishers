@@ -79,7 +79,9 @@ class TranslationPipeline:
             placeholder_guard = PlaceholderGuard(engine)
             protected_units = placeholder_guard.protect(units)
 
-            for _ in range(2):
+            retries = 2
+            retries_counter = 0
+            for _ in range(retries):
                 try:
                     dataset = protected_units
                     glossary_guard: GlossaryGuard | None = None
@@ -107,9 +109,13 @@ class TranslationPipeline:
                     return translator.engine, translations
 
                 except Exception as exe:
-                    self._logger.warning(
-                        ConsoleFormatter.error("An error occurred during translation. Retrying..."), exc_info=exe
-                    )
+                    if retries_counter < retries - 1:
+                        self._logger.warning(
+                            ConsoleFormatter.error("An error occurred during translation. Retrying..."), exc_info=exe
+                        )
+
+                finally:
+                    retries_counter += 1
 
             self._logger.warning(
                 ConsoleFormatter.warning("An error occurred during translation. Switching engine (if any)")
