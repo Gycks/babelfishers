@@ -41,6 +41,9 @@ class JSONParser(Parser):
     def parse(self, source_path: Path, excluded_keys: list[str]) -> ParseResult:
         self._logger.info(ConsoleFormatter.info(f"Parsing source {source_path}"))
 
+        if not source_path.suffixes[-1] == self._ALLOWED_EXTENSION:
+            raise ValueError(f"Invalid file extension for {source_path}. Expected {self._ALLOWED_EXTENSION}")
+
         raw: dict[str, Any] = json.loads(source_path.read_text(encoding="utf-8"))
         units: list[TranslationUnit] = []
         self._walk(raw, prefix="", units=units, excluded_keys=set(excluded_keys))
