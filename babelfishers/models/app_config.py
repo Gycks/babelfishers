@@ -43,7 +43,7 @@ class AppConfig(BaseModel):
         target_locales.remove(source_locale) if source_locale in target_locales else None
 
         if not set(target_locales).issubset(SUPPORTED_CULTURES):
-            raise ValueError("Invalid configuration file. Targets locale is malformed.")
+            raise ValueError("Invalid configuration file. Target locales is malformed.")
 
         engine_block = config.get("engine")
         if engine_block is None:
