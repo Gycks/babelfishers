@@ -56,6 +56,11 @@ class InstructionTagStrategy(_WrapperTagStrategy):
 
 class DictionaryMarkupStrategy(TokenStrategy):
     needs_restore = False
+    tag = "mstrans:dictionary"
+
+    @property
+    def ignore_tag_names(self) -> list[str]:
+        return [self.tag]
 
     def make_token(self, index: int, namespace: str) -> str:
         return f"{namespace}{index}"
@@ -63,7 +68,7 @@ class DictionaryMarkupStrategy(TokenStrategy):
     def build_span(self, token: str, source_term: str, replacement: str) -> str:
         safe_source = source_term.replace('"', "&quot;")
         safe_repl = replacement.replace('"', "&quot;")
-        return f'<mstrans:dictionary translation="{safe_repl}">{safe_source}</mstrans:dictionary>'
+        return f'<{self.tag} translation="{safe_repl}">{safe_source}</{self.tag}>'
 
     def leftover_pattern(self, token: str) -> re.Pattern[str]:
-        return re.compile(r"<mstrans:dictionary\b")
+        return re.compile(rf"<{re.escape(self.tag)}\b")
