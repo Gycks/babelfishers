@@ -146,8 +146,9 @@ class TranslationPipeline:
                     )
                 )
 
+    @staticmethod
     def _group_plural_units(
-        self, units: list[TranslationUnit]
+        units: list[TranslationUnit]
     ) -> dict[tuple[TranslationResourceType, str], dict[str, TranslationUnit]]:
         groups: dict[tuple[TranslationResourceType, str], dict[str, TranslationUnit]] = {}
 
