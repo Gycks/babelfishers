@@ -258,7 +258,7 @@ def _set_sqlite_pragma(dbapi_connection: SQLite3Connection, connection_record: C
 
 
 def _make_key(source_text: str, source_locale: str, target_locale: str) -> str:
-    raw = f"{source_locale}|{target_locale}|{source_text}"
+    raw = f"{source_locale}|{target_locale}|{source_text.strip()}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
