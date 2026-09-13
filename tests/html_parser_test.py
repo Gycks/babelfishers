@@ -1,5 +1,3 @@
-import logging
-
 import pytest
 from bs4 import BeautifulSoup
 
@@ -24,6 +22,10 @@ def parser():
 
 def _texts(units):
     return [u.source_text for u in units]
+
+
+def _unit_by_key(units, key):
+    return next(u for u in units if u.key == key)
 
 
 class TestHTMLParserParse:
@@ -78,9 +80,7 @@ class TestHTMLParserParse:
         assert _texts(result.units) == ["Hello"]
 
     def test_translate_no_attribute_excludes_subtree(self, parser, write_html):
-        source = write_html(
-            "<html><body><p>Hello</p><p translate=\"no\">Skip me</p></body></html>"
-        )
+        source = write_html("<html><body><p>Hello</p><p translate=\"no\">Skip me</p></body></html>")
         result = parser.parse(source, [])
 
         assert _texts(result.units) == ["Hello"]
@@ -91,24 +91,27 @@ class TestHTMLParserParse:
         )
         result = parser.parse(source, [])
 
-        assert _texts(result.units) == ["Keep"]
+        assert _texts(result.units) == ['<span translate="yes">Keep</span>']
 
-    def test_excludes_elements_matching_excluded_keys_selector(self, parser, write_html):
-        source = write_html(
-            "<html><body><p>Hello</p><div class=\"legal\">Do not translate</div></body></html>"
-        )
+    def test_excluded_keys_argument_is_accepted_but_ignored(self, parser, write_html):
+        source = write_html("<html><body><p>Hello</p><div class=\"legal\">Do not translate</div></body></html>")
         result = parser.parse(source, [".legal"])
 
-        assert _texts(result.units) == ["Hello"]
+        assert _texts(result.units) == ["Hello", "Do not translate"]
 
-    def test_invalid_excluded_keys_selector_is_ignored_with_warning(self, parser, write_html, caplog):
-        source = write_html("<html><body><p>Hello</p></body></html>")
-
-        with caplog.at_level(logging.WARNING):
-            result = parser.parse(source, ["[[["])
+    def test_class_notranslate_excludes_subtree(self, parser, write_html):
+        source = write_html('<html><body><p>Hello</p><p class="notranslate">Skip me</p></body></html>')
+        result = parser.parse(source, [])
 
         assert _texts(result.units) == ["Hello"]
-        assert any("Ignoring invalid excluded_keys selector" in r.message for r in caplog.records)
+
+    def test_translate_yes_overrides_ancestor_class_notranslate(self, parser, write_html):
+        source = write_html(
+            '<html><body><div class="notranslate">Skip <span translate="yes">Keep</span></div></body></html>'
+        )
+        result = parser.parse(source, [])
+
+        assert _texts(result.units) == ['<span translate="yes">Keep</span>']
 
     def test_all_units_are_tagged_with_html_resource_type(self, parser, write_html):
         source = write_html("<html><body><p>Hello</p></body></html>")
@@ -155,6 +158,139 @@ class TestHTMLParserParse:
         result.save(destination)
 
         assert "Hello" in destination.read_text(encoding="utf-8")
+
+
+class TestHTMLParserInlineSegmentation:
+    def test_inline_tag_content_is_merged_into_one_unit(self, parser, write_html):
+        source = write_html("<html><body><p>Hello <b>world</b>!</p></body></html>")
+        result = parser.parse(source, [])
+
+        assert _texts(result.units) == ["Hello <b>world</b>!"]
+
+    def test_nested_block_inside_a_block_splits_into_separate_units(self, parser, write_html):
+        source = write_html("<html><body><div>Before <p>Nested</p> After</div></body></html>")
+        result = parser.parse(source, [])
+
+        assert _texts(result.units) == ["Before ", "Nested", " After"]
+
+    def test_deeply_nested_inline_tags_stay_in_one_unit(self, parser, write_html):
+        source = write_html('<html><body><p>See <span>this <a href="#">link</a> here</span>.</p></body></html>')
+        result = parser.parse(source, [])
+
+        assert _texts(result.units) == ['See <span>this <a href="#">link</a> here</span>.']
+
+    def test_tag_with_no_visible_text_produces_no_unit(self, parser, write_html):
+        source = write_html('<html><body><img src="cat.png"></body></html>')
+        result = parser.parse(source, [])
+
+        assert result.units == []
+
+    def test_image_alongside_text_is_kept_inline_in_the_unit(self, parser, write_html):
+        source = write_html('<html><body><p>See this <img src="cat.png"> picture</p></body></html>')
+        result = parser.parse(source, [])
+
+        assert _texts(result.units) == ['See this <img src="cat.png"/> picture']
+
+    def test_write_back_replaces_the_whole_merged_run(self, parser, write_html, tmp_path):
+        source = write_html("<html><body><p>Hello <b>world</b>!</p></body></html>")
+        result = parser.parse(source, [])
+
+        result.units[0].write_back('Bonjour <b>monde</b> !')
+
+        destination = tmp_path / "out.html"
+        result.save(destination)
+
+        assert "<p>Bonjour <b>monde</b> !</p>" in destination.read_text(encoding="utf-8")
+
+    def test_clone_write_back_on_merged_run_only_touches_the_clone(self, parser, write_html):
+        source = write_html("<html><body><p>Hello <b>world</b>!</p></body></html>")
+        original = parser.parse(source, [])
+        cloned = parser.clone(original)
+
+        cloned.units[0].write_back("Bonjour")
+
+        assert "Bonjour" in str(cloned.document)
+        assert "Bonjour" not in str(original.document)
+        assert "Hello" in str(original.document)
+
+
+class TestHTMLParserAttributeExtraction:
+    def test_extracts_alt_attribute_from_img(self, parser, write_html):
+        source = write_html('<html><body><img src="cat.png" alt="A cat"></body></html>')
+        result = parser.parse(source, [])
+
+        assert _texts(result.units) == ["A cat"]
+
+    def test_extracts_placeholder_attribute_from_input(self, parser, write_html):
+        source = write_html('<html><body><input type="text" placeholder="Enter name"></body></html>')
+        result = parser.parse(source, [])
+
+        assert _texts(result.units) == ["Enter name"]
+
+    def test_extracts_placeholder_attribute_from_textarea(self, parser, write_html):
+        source = write_html('<html><body><textarea placeholder="Type here"></textarea></body></html>')
+        result = parser.parse(source, [])
+
+        assert _texts(result.units) == ["Type here"]
+
+    def test_extracts_title_attribute_from_any_element(self, parser, write_html):
+        source = write_html('<html><body><div title="A helpful hint">Content</div></body></html>')
+        result = parser.parse(source, [])
+
+        assert "A helpful hint" in _texts(result.units)
+
+    def test_empty_or_whitespace_only_attribute_produces_no_unit(self, parser, write_html):
+        source = write_html('<html><body><img src="cat.png" alt="   "></body></html>')
+        result = parser.parse(source, [])
+
+        assert result.units == []
+
+    def test_attribute_respects_translate_no_ancestor(self, parser, write_html):
+        source = write_html(
+            '<html><body><div translate="no"><img src="cat.png" alt="A cat"></div></body></html>'
+        )
+        result = parser.parse(source, [])
+
+        assert result.units == []
+
+    def test_attribute_respects_class_notranslate_ancestor(self, parser, write_html):
+        source = write_html(
+            '<html><body><div class="notranslate"><img src="cat.png" alt="A cat"></div>'
+            '<img src="dog.png" alt="A dog"></body></html>'
+        )
+        result = parser.parse(source, [])
+
+        assert _texts(result.units) == ["A dog"]
+
+    def test_write_back_mutates_the_attribute_value(self, parser, write_html, tmp_path):
+        source = write_html('<html><body><img src="cat.png" alt="A cat"></body></html>')
+        result = parser.parse(source, [])
+
+        result.units[0].write_back("Un chat")
+
+        destination = tmp_path / "out.html"
+        result.save(destination)
+
+        assert 'alt="Un chat"' in destination.read_text(encoding="utf-8")
+
+    def test_attribute_and_block_units_have_distinct_keys(self, parser, write_html):
+        source = write_html('<html><body><p>Hello <img src="cat.png" alt="A cat"></p></body></html>')
+        result = parser.parse(source, [])
+
+        keys = [u.key for u in result.units]
+        assert len(keys) == len(set(keys))
+        assert any("@" in k for k in keys)
+        assert any("@" not in k for k in keys)
+
+    def test_clone_write_back_on_attribute_only_touches_the_clone(self, parser, write_html):
+        source = write_html('<html><body><img src="cat.png" alt="A cat"></body></html>')
+        original = parser.parse(source, [])
+        cloned = parser.clone(original)
+
+        cloned.units[0].write_back("Un chat")
+
+        assert 'alt="Un chat"' in str(cloned.document)
+        assert 'alt="A cat"' in str(original.document)
 
 
 class TestHTMLParserClone:
@@ -212,3 +348,12 @@ class TestHTMLParserClone:
         cloned.save(destination)
 
         assert "Bonjour" in destination.read_text(encoding="utf-8")
+
+    def test_clone_stops_a_merged_run_at_a_translate_no_sibling(self, parser, write_html):
+        source = write_html(
+            '<html><body><p>Hello <span translate="no">skip</span> World</p></body></html>'
+        )
+        original = parser.parse(source, [])
+        cloned = parser.clone(original)
+
+        assert [u.source_text for u in cloned.units] == [u.source_text for u in original.units]

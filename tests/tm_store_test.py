@@ -50,6 +50,11 @@ class TestTMStoreLookupAndStore:
         store.store("Hello", "en", "fr", "Bonjour", "deepl")
         assert store.lookup("Hello", "es", "fr") is None
 
+    def test_lookup_hits_regardless_of_leading_or_trailing_whitespace(self, store):
+        store.store("Hello", "en", "fr", "Bonjour", "deepl")
+        assert store.lookup("  Hello  ", "en", "fr") == "Bonjour"
+        assert store.lookup("Hello\n", "en", "fr") == "Bonjour"
+
     def test_store_upsert_updates_translated_and_engine_but_preserves_created_at(self, store, monkeypatch):
         monkeypatch.setattr("babelfishers.core.tm_store._now", lambda: 1000)
         store.store("Hello", "en", "fr", "Bonjour", "deepl")
@@ -123,6 +128,18 @@ class TestTMStoreBatchAndBumping:
         assert key != TMStore.make_key("Hello", "en", "de")
         assert key != TMStore.make_key("Hello", "es", "fr")
         assert key != TMStore.make_key("Bye", "en", "fr")
+
+    def test_make_key_normalizes_leading_and_trailing_whitespace(self):
+        key = TMStore.make_key("Hello", "en", "fr")
+
+        assert key == TMStore.make_key("  Hello  ", "en", "fr")
+        assert key == TMStore.make_key("\nHello\t", "en", "fr")
+
+    def test_make_key_does_not_normalize_internal_whitespace_or_punctuation(self):
+        key = TMStore.make_key("Hello", "en", "fr")
+
+        assert key != TMStore.make_key("Hello.", "en", "fr")
+        assert key != TMStore.make_key("H e l l o", "en", "fr")
 
 
 class TestTMStoreStats:

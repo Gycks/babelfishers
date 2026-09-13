@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import pytest
@@ -244,6 +245,66 @@ class TestTranslationPipelineEngineRetryAndSwitch:
         pipeline.run(parse_result, "en", "fr", Path("/tmp/out.json"))
 
         assert written["k1"] == "Hello %s"
+
+
+class TestTranslationPipelinePlaceholderConsistency:
+    def test_run_logs_a_warning_when_a_placeholder_is_missing_from_the_translation(
+        self, tm_store, monkeypatch, caplog
+    ):
+        class _DropsPlaceholderTranslator(Translator):
+            def __init__(self) -> None:
+                super().__init__(Engine.DeepL)
+
+            def translate(self, data, source, target):
+                for unit in data:
+                    unit.translated_text = "Bonjour"
+                return data
+
+        _register(monkeypatch, Engine.DeepL, _DropsPlaceholderTranslator)
+
+        written = {}
+        pipeline = TranslationPipeline([Engine.DeepL], glossary=None, translation_store=tm_store)
+        parse_result = _parse_result([_unit("k1", "Hello %s", written)])
+
+        with caplog.at_level(logging.WARNING):
+            pipeline.run(parse_result, "en", "fr", Path("/tmp/out.json"))
+
+        assert any("Placeholder mismatch" in r.message for r in caplog.records)
+
+    def test_run_does_not_warn_when_placeholders_are_preserved(self, tm_store, monkeypatch, caplog):
+        _register(monkeypatch, Engine.DeepL, _echo_translator(Engine.DeepL))
+
+        written = {}
+        pipeline = TranslationPipeline([Engine.DeepL], glossary=None, translation_store=tm_store)
+        parse_result = _parse_result([_unit("k1", "Hello %s", written)])
+
+        with caplog.at_level(logging.WARNING):
+            pipeline.run(parse_result, "en", "fr", Path("/tmp/out.json"))
+
+        assert not any("Placeholder mismatch" in r.message for r in caplog.records)
+
+    def test_run_does_not_warn_for_a_unit_marked_skip_translation(self, tm_store, monkeypatch, caplog):
+        class _NeverCalledTranslator(Translator):
+            def __init__(self) -> None:
+                super().__init__(Engine.DeepL)
+
+            def translate(self, data, source, target):
+                return data
+
+        _register(monkeypatch, Engine.DeepL, _NeverCalledTranslator)
+
+        written = {}
+        unit = _unit("k1", "Widget %s", written)
+        unit.skip_translation = True
+        unit.translated_text = "Gadget"
+
+        pipeline = TranslationPipeline([Engine.DeepL], glossary=None, translation_store=tm_store)
+        parse_result = _parse_result([unit])
+
+        with caplog.at_level(logging.WARNING):
+            pipeline.run(parse_result, "en", "fr", Path("/tmp/out.json"))
+
+        assert not any("Placeholder mismatch" in r.message for r in caplog.records)
 
 
 class TestTranslationPipelineGlossaryIntegration:

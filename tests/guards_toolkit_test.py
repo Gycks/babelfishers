@@ -32,6 +32,28 @@ class TestFindPlaceholdersRegexCategories:
         assert spans == []
 
 
+class TestFindPlaceholdersInlineXmlTags:
+    def test_finds_paired_inline_tag_for_android_resource_type(self):
+        spans = find_placeholders('Sent <xliff:g id="count">%d</xliff:g> messages', T.ANDROID_STRINGS)
+        assert spans[0].matched_text == '<xliff:g id="count">%d</xliff:g>'
+
+    def test_finds_paired_inline_tag_for_xliff_resource_type(self):
+        spans = find_placeholders('Hello <g id="1">world</g>!', T.XLIFF)
+        assert spans[0].matched_text == '<g id="1">world</g>'
+
+    def test_finds_self_closing_inline_tag_for_xliff_resource_type(self):
+        spans = find_placeholders('Hello <x id="1"/> world', T.XLIFF)
+        assert spans[0].matched_text == '<x id="1"/>'
+
+    def test_inline_tag_and_printf_placeholder_are_both_protected(self):
+        spans = find_placeholders('Sent <xliff:g id="count">%d</xliff:g> to %s', T.ANDROID_STRINGS)
+        assert [s.matched_text for s in spans] == ['<xliff:g id="count">%d</xliff:g>', "%s"]
+
+    def test_does_not_match_inline_tags_for_json_resource_type(self):
+        spans = find_placeholders('Hello <g id="1">world</g>!', T.JSON)
+        assert spans == []
+
+
 class TestFindPlaceholdersIcuBraceScan:
     def test_finds_balanced_icu_brace_placeholder(self):
         spans = find_placeholders("Hello {name}", T.HTML)

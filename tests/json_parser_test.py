@@ -93,6 +93,13 @@ class TestJSONParserParse:
 
         assert [u.key for u in result.units] == ["greeting"]
 
+    @pytest.mark.parametrize("value", ["", "   ", "\n\t"])
+    def test_empty_or_whitespace_only_string_values_produce_no_unit(self, parser, write_json, value):
+        source = write_json({"greeting": "Hello", "blank": value})
+        result = parser.parse(source, [])
+
+        assert [u.key for u in result.units] == ["greeting"]
+
     def test_empty_dict_produces_no_units(self, parser, write_json):
         source = write_json({})
         result = parser.parse(source, [])
