@@ -7,6 +7,8 @@ from babelfishers.models.translations import TranslationUnit
 class Translator(ABC):
     def __init__(self, engine: Engine) -> None:
         self._engine: Engine = engine
+        self._MAX_RATE_LIMIT_RETRIES: int = 3
+        self._RATE_LIMIT_BASE_DELAY_SECONDS: float = 2.0
 
     @property
     def engine(self) -> Engine:

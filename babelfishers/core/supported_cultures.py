@@ -34,3 +34,11 @@ SUPPORTED_CULTURES: dict[str, Culture] = {
         Culture(code="zh", name="Chinese", provider_codes={Engine.Azure: "zh-Hans"}),
     ]
 }
+
+
+def get_culture_code_for_engine(culture_code: str, engine: Engine) -> str:
+    culture = SUPPORTED_CULTURES.get(culture_code)
+    if culture is None:
+        raise ValueError(f"Culture code {culture_code} is not supported.")
+
+    return culture.provider_codes.get(engine, culture.code)
