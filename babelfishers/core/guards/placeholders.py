@@ -20,16 +20,22 @@ _PRINTF = re.compile(r"%(?:\d+\$)?[-+ 0#]*\d*(?:\.\d+)?(?:[sdifFeEgGxXo@]|ld|lld
 _XCSTRINGS_ARG = re.compile(r"%arg\b")
 _STRINGSDICT_SPECIFIER = re.compile(r"%(?:\d+\$)?#@[A-Za-z_]\w*@")
 
+# Inline XML markup embedded in a source string's mixed content, e.g. Android's
+# <xliff:g id="count">%d</xliff:g> or XLIFF's <g>/<x/>/<bpt>/<ept>/<ph>. Must
+# be passed through untranslated so the surrounding structure survives.
+_INLINE_XML_TAG_PAIR = re.compile(r"<([\w:.-]+)(?:\s[^>]*)?>.*?</\1>", re.DOTALL)
+_INLINE_XML_SELF_CLOSING_TAG = re.compile(r"<[\w:.-]+(?:\s[^>]*)?/>")
+
 
 FORMAT_CATEGORIES: dict[TranslationResourceType, list[re.Pattern[str]]] = {
     TranslationResourceType.HTML: [],
     TranslationResourceType.JSON: [_PRINTF],
     TranslationResourceType.YAML: [_RAILS_NAMED, _SYMFONY_PERCENT],
     TranslationResourceType.JAVA_PROPERTIES: [_PRINTF],
-    TranslationResourceType.ANDROID_STRINGS: [_PRINTF],
+    TranslationResourceType.ANDROID_STRINGS: [_INLINE_XML_TAG_PAIR, _INLINE_XML_SELF_CLOSING_TAG, _PRINTF],
     TranslationResourceType.GETTEXT: [_PRINTF, _PYTHON_PERCENT_NAMED],
     TranslationResourceType.APPLE_STRINGS: [_PRINTF, _XCSTRINGS_ARG, _STRINGSDICT_SPECIFIER],
     TranslationResourceType.FLUTTER_ARB: [],
-    TranslationResourceType.XLIFF: [_PRINTF],
+    TranslationResourceType.XLIFF: [_INLINE_XML_TAG_PAIR, _INLINE_XML_SELF_CLOSING_TAG, _PRINTF],
     TranslationResourceType.DOTNET_RESX: [],
 }
