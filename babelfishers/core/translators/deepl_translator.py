@@ -22,7 +22,7 @@ from babelfishers.utils.utils import get_env
 class DeeplTranslator(Translator):
     def __init__(self) -> None:
         super().__init__(Engine.DeepL)
-        self._logger: logging.Logger = logging.getLogger(__file__)
+        self._logger: logging.Logger = logging.getLogger(__name__)
         self._translator: DeepLClient = DeepLClient(get_env("DEEPL_API_KEY"))
 
     def translate(self, data: list[TranslationUnit], source: str, target: str) -> list[TranslationUnit]:

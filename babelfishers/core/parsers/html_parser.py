@@ -32,7 +32,7 @@ _UNIVERSAL_ATTRIBUTES: tuple[str, ...] = ("title",)
 @register(TranslationResourceType.HTML)
 class HTMLParser(Parser):
     def __init__(self) -> None:
-        self._logger: logging.Logger = logging.getLogger(__file__)
+        self._logger: logging.Logger = logging.getLogger(__name__)
         self._ALLOWED_EXTENSION: str = ".html"
         self._ignore: list[str] = ["style", "script", "head", "title", "meta", "link", "noscript"]
 

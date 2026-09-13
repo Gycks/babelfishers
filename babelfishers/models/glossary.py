@@ -10,7 +10,7 @@ from babelfishers.core.supported_cultures import SUPPORTED_CULTURES
 from babelfishers.utils.console_formater import ConsoleFormatter
 
 
-_logger: logging.Logger = logging.getLogger(__file__)
+_logger: logging.Logger = logging.getLogger(__name__)
 
 _TRUE_STRINGS = {"true", "1", "yes"}
 _FALSE_STRINGS = {"false", "0", "no", ""}

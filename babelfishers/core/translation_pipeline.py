@@ -27,7 +27,7 @@ class TranslationPipeline:
         dry_run: bool = False,
     ) -> None:
 
-        self._logger: logging.Logger = logging.getLogger(__file__)
+        self._logger: logging.Logger = logging.getLogger(__name__)
         self._translation_engines: list[Engine] = translation_engines
         self._glossary: Glossary | None = glossary
         self._translation_store: TMStore = translation_store
@@ -148,7 +148,7 @@ class TranslationPipeline:
 
     @staticmethod
     def _group_plural_units(
-        units: list[TranslationUnit]
+        units: list[TranslationUnit],
     ) -> dict[tuple[TranslationResourceType, str], dict[str, TranslationUnit]]:
         groups: dict[tuple[TranslationResourceType, str], dict[str, TranslationUnit]] = {}
 

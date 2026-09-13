@@ -13,7 +13,7 @@ from babelfishers.utils.console_formater import ConsoleFormatter
 
 _PLACEHOLDER: str = "[source]"
 _WILDCARD_TOKEN = re.compile(r"(\*\*/|\*\*|\*|\?)")
-_logger: logging.Logger = logging.getLogger(__file__)
+_logger: logging.Logger = logging.getLogger(__name__)
 
 
 def _capturing_regex(glob_pattern: str) -> re.Pattern[str]:

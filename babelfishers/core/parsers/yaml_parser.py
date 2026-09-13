@@ -41,7 +41,7 @@ def _make_duplicate_key_warning_loader(logger: logging.Logger) -> type[yaml.Safe
 @register(TranslationResourceType.YAML)
 class YAMLParser(Parser):
     def __init__(self) -> None:
-        self._logger: logging.Logger = logging.getLogger(__file__)
+        self._logger: logging.Logger = logging.getLogger(__name__)
         self._PATH_TOKEN_RE = re.compile(r"([^.\[\]]+)|\[(\d+)]")
         self._ALLOWED_EXTENSIONS: tuple[str, ...] = (".yaml", ".yml")
 

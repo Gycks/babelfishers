@@ -17,7 +17,7 @@ from babelfishers.utils.utils import atomic_write
 @register(TranslationResourceType.FLUTTER_ARB)
 class FlutterArbParser(Parser):
     def __init__(self) -> None:
-        self._logger: logging.Logger = logging.getLogger(__file__)
+        self._logger: logging.Logger = logging.getLogger(__name__)
         self._ALLOWED_EXTENSION: str = ".arb"
 
     def _warn_on_duplicate_pairs(self, pairs: list[tuple[str, Any]]) -> dict[str, Any]:

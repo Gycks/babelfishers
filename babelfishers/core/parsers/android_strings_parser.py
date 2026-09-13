@@ -15,7 +15,7 @@ from babelfishers.utils.utils import atomic_write
 @register(TranslationResourceType.ANDROID_STRINGS)
 class AndroidStringsParser(Parser):
     def __init__(self) -> None:
-        self._logger: logging.Logger = logging.getLogger(__file__)
+        self._logger: logging.Logger = logging.getLogger(__name__)
         self._ALLOWED_EXTENSION: str = ".xml"
 
     def _collect_entries(self, root: Any) -> dict[str, Any]:

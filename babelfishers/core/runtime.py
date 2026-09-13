@@ -16,7 +16,7 @@ class Runtime:
     def __init__(
         self, config: AppConfig, db_storage: Path | None = None, dry_run: bool = False, max_workers: int = 8
     ) -> None:
-        self._logger: logging.Logger = logging.getLogger(__file__)
+        self._logger: logging.Logger = logging.getLogger(__name__)
         self._config: AppConfig = config
         self._dry_run: bool = dry_run
         self._tm_store: TMStore = TMStore(db_storage or get_translation_store_storage_path())

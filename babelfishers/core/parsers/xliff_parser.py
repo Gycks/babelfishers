@@ -17,7 +17,7 @@ from babelfishers.utils.utils import atomic_write
 @register(TranslationResourceType.XLIFF)
 class XLIFFParser(Parser):
     def __init__(self) -> None:
-        self._logger: logging.Logger = logging.getLogger(__file__)
+        self._logger: logging.Logger = logging.getLogger(__name__)
         self._ALLOWED_EXTENSIONS: tuple[str, ...] = (".xliff", ".xlf")
 
     @staticmethod

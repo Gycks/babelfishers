@@ -24,7 +24,7 @@ _PO_WRAP_WIDTH = 77
 @register(TranslationResourceType.GETTEXT)
 class GettextParser(Parser):
     def __init__(self) -> None:
-        self._logger: logging.Logger = logging.getLogger(__file__)
+        self._logger: logging.Logger = logging.getLogger(__name__)
         self._ALLOWED_EXTENSION: str = ".po"
 
     @staticmethod
