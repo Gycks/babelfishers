@@ -10,6 +10,14 @@ class TokenStrategy(ABC):
 
     needs_restore: bool = True
 
+    @property
+    def ignore_tag_names(self) -> list[str]:
+        """
+        Tag names this strategy wraps protected spans in, if any. Empty for
+        strategies that don't use a wrapper tag.
+        """
+        return []
+
     @abstractmethod
     def make_token(self, index: int, namespace: str) -> str:
         """A short, unique id for this span, scoped to one unit."""

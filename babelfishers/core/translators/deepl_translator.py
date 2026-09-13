@@ -9,6 +9,7 @@ from deepl import (
     TooManyRequestsException,
 )
 
+from babelfishers.core.tokenization.factory import TokenStrategyFactory
 from babelfishers.core.translators.registry import register
 from babelfishers.core.translators.translator import Translator
 from babelfishers.models.engine import Engine
@@ -25,6 +26,8 @@ class DeeplTranslator(Translator):
         self._translator: DeepLClient = DeepLClient(get_env("DEEPL_API_KEY"))
 
     def translate(self, data: list[TranslationUnit], source: str, target: str) -> list[TranslationUnit]:
+        ignore_tags = TokenStrategyFactory.get_strategy_for(self._engine).ignore_tag_names
+
         for unit in data:
             if unit.skip_translation:
                 continue
@@ -35,6 +38,9 @@ class DeeplTranslator(Translator):
                     source_lang=source,
                     target_lang=target,
                     context=unit.context_hint,
+                    preserve_formatting=True,
+                    tag_handling="xml" if ignore_tags else None,
+                    ignore_tags=ignore_tags or None,
                 )
             except QuotaExceededException:
                 self._logger.error(ConsoleFormatter.error("DeepL quota exceeded, skipping unit"))

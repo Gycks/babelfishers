@@ -18,6 +18,10 @@ class DefaultMaskStrategy(TokenStrategy):
 class _WrapperTagStrategy(TokenStrategy):
     tag = "gls"
 
+    @property
+    def ignore_tag_names(self) -> list[str]:
+        return [self.tag]
+
     def make_token(self, index: int, namespace: str) -> str:
         return f"{namespace}{index}"
 
