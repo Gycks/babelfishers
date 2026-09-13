@@ -107,7 +107,7 @@ class TestAppConfigLoadFileValidation:
             provider = "deepl"
             """
         )
-        with pytest.raises(ValueError, match="Targets locale"):
+        with pytest.raises(ValueError, match="Target locales"):
             AppConfig.load(config_file)
 
     def test_raises_value_error_when_engine_section_is_missing(self, write_config):
@@ -206,7 +206,7 @@ class TestAppConfigLoadFileValidation:
             [engine]
             provider = "deepl"
             """)
-        with pytest.raises(ValueError, match="Targets locale is malformed"):
+        with pytest.raises(ValueError, match="Target locales is malformed"):
             AppConfig.load(config_file)
 
     def test_source_locale_is_not_trimmed_or_normalized(self, write_config):
