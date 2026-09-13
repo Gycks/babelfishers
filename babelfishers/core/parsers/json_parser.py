@@ -11,6 +11,7 @@ from babelfishers.core.parsers.registry import register
 from babelfishers.models.translation_resource import TranslationResourceType
 from babelfishers.models.translations import ParseResult, TranslationUnit
 from babelfishers.utils.console_formater import ConsoleFormatter
+from babelfishers.utils.utils import atomic_write
 
 
 @register(TranslationResourceType.JSON)
@@ -30,10 +31,9 @@ class JSONParser(Parser):
     @staticmethod
     def _make_save(document: dict[str, Any]) -> Callable[[Path], None]:
         def save(destination: Path) -> None:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_text(
-                json.dumps(document, ensure_ascii=False, indent=2),
-                encoding="utf-8",
+            atomic_write(
+                destination,
+                lambda tmp: tmp.write_text(json.dumps(document, ensure_ascii=False, indent=2), encoding="utf-8"),
             )
 
         return save
@@ -66,14 +66,15 @@ class JSONParser(Parser):
                     continue
 
                 if isinstance(v, str):
-                    units.append(
-                        TranslationUnit(
-                            unit_type=TranslationResourceType.JSON,
-                            key=full_key,
-                            source_text=v,
-                            write_back=self._make_write_back(node, k),
+                    if v.strip():
+                        units.append(
+                            TranslationUnit(
+                                unit_type=TranslationResourceType.JSON,
+                                key=full_key,
+                                source_text=v,
+                                write_back=self._make_write_back(node, k),
+                            )
                         )
-                    )
 
                 else:
                     self._walk(v, full_key, units, excluded_keys)
@@ -85,14 +86,15 @@ class JSONParser(Parser):
                     continue
 
                 if isinstance(item, str):
-                    units.append(
-                        TranslationUnit(
-                            unit_type=TranslationResourceType.JSON,
-                            key=full_key,
-                            source_text=item,
-                            write_back=self._make_write_back(node, i),
+                    if item.strip():
+                        units.append(
+                            TranslationUnit(
+                                unit_type=TranslationResourceType.JSON,
+                                key=full_key,
+                                source_text=item,
+                                write_back=self._make_write_back(node, i),
+                            )
                         )
-                    )
 
                 else:
                     self._walk(item, full_key, units, excluded_keys)
