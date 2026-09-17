@@ -1,11 +1,16 @@
 import logging
 import time
 
-from google.api_core.exceptions import GoogleAPICallError, TooManyRequests, Unauthorized
-from google.cloud import translate
+from google import genai
+from google.genai import errors, types
 
-from babelfishers.core.supported_cultures import get_culture_code_for_engine
+from babelfishers.core.supported_cultures import get_culture_name
 from babelfishers.core.tokenization.factory import TokenStrategyFactory
+from babelfishers.core.translators.llm_translator_toolkit import (
+    ModelTranslationResponse,
+    build_system_prompt,
+    build_user_prompt,
+)
 from babelfishers.core.translators.registry import register
 from babelfishers.core.translators.translator import Translator
 from babelfishers.models.engine import Engine
@@ -14,78 +19,70 @@ from babelfishers.utils.console_formater import ConsoleFormatter
 from babelfishers.utils.utils import get_env
 
 
-@register(Engine.GoogleTranslate)
+@register(Engine.Google)
 class GoogleTranslator(Translator):
     def __init__(self) -> None:
-        super().__init__(Engine.GoogleTranslate)
+        super().__init__(Engine.Google)
         self._logger: logging.Logger = logging.getLogger(__name__)
-
-        self._project_id: str = get_env("BF_GOOGLE_PROJECT_ID")
-        try:
-            self._location: str = get_env("BF_GOOGLE_LOCATION")
-        except KeyError:
-            self._location = "global"
-
-        self._client: translate.TranslationServiceClient = self.create_client()
-
-    @staticmethod
-    def create_client() -> translate.TranslationServiceClient:
-        credentials = None
-        try:
-            key_path = get_env("BF_GOOGLE_APPLICATION_CREDENTIALS")
-        except KeyError:
-            key_path = None
-
-        if key_path:
-            from google.oauth2 import service_account
-
-            credentials = service_account.Credentials.from_service_account_file(key_path)  # type: ignore[no-untyped-call]
-
-        return translate.TranslationServiceClient(credentials=credentials)
+        self._client: genai.Client = genai.Client(api_key=get_env("BF_GOOGLE_API_KEY"))
+        self._model: str = get_env("BF_GOOGLE_MODEL_ID")
 
     def translate(self, data: list[TranslationUnit], source: str, target: str) -> list[TranslationUnit]:
-        ignore_tags = TokenStrategyFactory.get_strategy_for(self._engine).ignore_tag_names
-        mime_type = "text/html" if len(ignore_tags) else "text/plain"
-        parent = f"projects/{self._project_id}/locations/{self._location}"
+        ignore_tag_shapes = TokenStrategyFactory.get_strategy_for(self._engine).ignore_tag_shapes
+        system_prompt = build_system_prompt(get_culture_name(source), get_culture_name(target), ignore_tag_shapes)
 
         for unit in data:
             if unit.skip_translation:
                 continue
 
+            user_prompt = build_user_prompt(unit.source_text, unit.context_hint)
+
             rate_limit_attempt = 0
             while True:
                 try:
-                    response: translate.TranslateTextResponse = self._client.translate_text(
-                        contents=[unit.source_text],
-                        target_language_code=get_culture_code_for_engine(target, self._engine),
-                        source_language_code=get_culture_code_for_engine(source, self._engine),
-                        mime_type=mime_type,
-                        parent=parent,
+                    response = self._client.models.generate_content(
+                        model=self._model,
+                        contents=user_prompt,
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_prompt,
+                            response_mime_type="application/json",
+                            response_schema=ModelTranslationResponse,
+                            thinking_config=types.ThinkingConfig(thinking_budget=0),
+                        ),
                     )
                     break
-                except Unauthorized:
-                    self._logger.error(
-                        ConsoleFormatter.error("Google Translate authorization failed — check credentials")
-                    )
-                    raise
-                except TooManyRequests:
-                    if rate_limit_attempt >= self._MAX_RATE_LIMIT_RETRIES:
-                        self._logger.error(ConsoleFormatter.error("Google Translate rate limit exceeded"))
+                except errors.ClientError as e:
+                    if e.code in (401, 403):
+                        self._logger.error(ConsoleFormatter.error("Gemini authorization failed — check API key"))
                         raise
-                    delay = self._RATE_LIMIT_BASE_DELAY_SECONDS * (2**rate_limit_attempt)
+                    if e.code != 429 or rate_limit_attempt >= self._MAX_RATE_LIMIT_RETRIES:
+                        self._logger.error(ConsoleFormatter.error(f"Gemini API error for unit: {e}"))
+                        raise
+                    headers = getattr(e.response, "headers", None)
+                    retry_after = headers.get("retry-after") if headers else None
+                    delay = (
+                        float(retry_after)
+                        if retry_after
+                        else self._RATE_LIMIT_BASE_DELAY_SECONDS * (2**rate_limit_attempt)
+                    )
                     self._logger.warning(
                         ConsoleFormatter.warning(
-                            f"Google Translate rate limited, retrying unit in {delay:.1f}s "
+                            f"Gemini rate limited, retrying unit in {delay:.1f}s "
                             f"(attempt {rate_limit_attempt + 1}/{self._MAX_RATE_LIMIT_RETRIES})"
                         )
                     )
                     time.sleep(delay)
                     rate_limit_attempt += 1
-                except GoogleAPICallError as e:
-                    self._logger.error(ConsoleFormatter.error(f"Google Translate API error for unit: {e}"))
+                except errors.ServerError as e:
+                    self._logger.error(ConsoleFormatter.error(f"Gemini server error for unit: {e}"))
                     raise
 
-            translated_text = response.translations[0].translated_text
+            parsed = response.parsed
+            if not isinstance(parsed, ModelTranslationResponse):
+                self._logger.error(ConsoleFormatter.error("Gemini returned no parsable translation for unit"))
+                raise ValueError("Gemini returned no parsable translation for unit")
+
+            translated_text = parsed.translation.strip()
             unit.translated_text = translated_text
             unit.write_back(translated_text)
 
