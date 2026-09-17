@@ -7,6 +7,9 @@ class Engine(StrEnum):
     Azure = "azure"
     Anthropic = "anthropic"
     OpenAI = "openai"
+    Mistral = "mistral"
+    Google = "gemini"
+    DeepSeek = "deepseek"
     GoogleTranslate = "google-translate"
     LibreTranslate = "libre-translate"
 
