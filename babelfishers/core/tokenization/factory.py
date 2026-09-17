@@ -16,6 +16,9 @@ class TokenStrategyFactory:
         Engine.GoogleTranslate: NoTranslateSpanStrategy,
         Engine.Anthropic: InstructionTagStrategy,
         Engine.OpenAI: InstructionTagStrategy,
+        Engine.Mistral: InstructionTagStrategy,
+        Engine.Google: InstructionTagStrategy,
+        Engine.DeepSeek: InstructionTagStrategy,
         Engine.LibreTranslate: DefaultMaskStrategy,
     }
 

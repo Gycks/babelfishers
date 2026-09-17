@@ -1,5 +1,9 @@
 from .anthropic_translator import AnthropicTranslator  # noqa: F401
 from .azure_translator import AzureTranslator  # noqa: F401
 from .deepl_translator import DeeplTranslator  # noqa: F401
+from .deepseek_translator import DeepSeekTranslator  # noqa: F401
 from .google_translator import GoogleTranslator  # noqa: F401
+from .googletrans_translator import GoogleTranslateTranslator  # noqa: F401
 from .libretrans_translator import LibreTranslateTranslator  # noqa: F401
+from .mistral_translator import MistralTranslator  # noqa: F401
+from .openai_translator import OpenAITranslator  # noqa: F401
