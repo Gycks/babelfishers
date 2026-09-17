@@ -53,10 +53,10 @@ class GoogleTranslator(Translator):
                     break
                 except errors.ClientError as e:
                     if e.code in (401, 403):
-                        self._logger.error(ConsoleFormatter.error("Gemini authorization failed — check API key"))
+                        self._logger.error(ConsoleFormatter.error("Google authorization failed — check API key"))
                         raise
                     if e.code != 429 or rate_limit_attempt >= self._MAX_RATE_LIMIT_RETRIES:
-                        self._logger.error(ConsoleFormatter.error(f"Gemini API error for unit: {e}"))
+                        self._logger.error(ConsoleFormatter.error(f"Google API error for unit: {e}"))
                         raise
                     headers = getattr(e.response, "headers", None)
                     retry_after = headers.get("retry-after") if headers else None
@@ -67,20 +67,20 @@ class GoogleTranslator(Translator):
                     )
                     self._logger.warning(
                         ConsoleFormatter.warning(
-                            f"Gemini rate limited, retrying unit in {delay:.1f}s "
+                            f"Google rate limited, retrying unit in {delay:.1f}s "
                             f"(attempt {rate_limit_attempt + 1}/{self._MAX_RATE_LIMIT_RETRIES})"
                         )
                     )
                     time.sleep(delay)
                     rate_limit_attempt += 1
                 except errors.ServerError as e:
-                    self._logger.error(ConsoleFormatter.error(f"Gemini server error for unit: {e}"))
+                    self._logger.error(ConsoleFormatter.error(f"Google server error for unit: {e}"))
                     raise
 
             parsed = response.parsed
             if not isinstance(parsed, ModelTranslationResponse):
-                self._logger.error(ConsoleFormatter.error("Gemini returned no parsable translation for unit"))
-                raise ValueError("Gemini returned no parsable translation for unit")
+                self._logger.error(ConsoleFormatter.error("Google returned no parsable translation for unit"))
+                raise ValueError("Google returned no parsable translation for unit")
 
             translated_text = parsed.translation.strip()
             unit.translated_text = translated_text
