@@ -18,6 +18,15 @@ class TokenStrategy(ABC):
         """
         return []
 
+    @property
+    def ignore_tag_shapes(self) -> list[str]:
+        """
+        Human-readable examples of the tag shape(s) this strategy embeds
+        protected spans in, e.g. for use in LLM instructions. Empty for
+        strategies that don't use a wrapper tag.
+        """
+        return []
+
     @abstractmethod
     def make_token(self, index: int, namespace: str) -> str:
         """A short, unique id for this span, scoped to one unit."""

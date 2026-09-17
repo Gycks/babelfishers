@@ -22,6 +22,10 @@ class _WrapperTagStrategy(TokenStrategy):
     def ignore_tag_names(self) -> list[str]:
         return [self.tag]
 
+    @property
+    def ignore_tag_shapes(self) -> list[str]:
+        return [f"<{self.tag} id=...>content</{self.tag}>"]
+
     def make_token(self, index: int, namespace: str) -> str:
         return f"{namespace}{index}"
 
@@ -46,6 +50,10 @@ class XmlIgnoreTagStrategy(_WrapperTagStrategy):
 class NoTranslateSpanStrategy(_WrapperTagStrategy):
     tag = "span"
 
+    @property
+    def ignore_tag_shapes(self) -> list[str]:
+        return [f'<{self.tag} translate="no" id=...>content</{self.tag}>']
+
     def build_span(self, token: str, source_term: str, replacement: str) -> str:
         return f'<span translate="no" id="{token}">{replacement}</span>'
 
@@ -61,6 +69,10 @@ class DictionaryMarkupStrategy(TokenStrategy):
     @property
     def ignore_tag_names(self) -> list[str]:
         return [self.tag]
+
+    @property
+    def ignore_tag_shapes(self) -> list[str]:
+        return [f'<{self.tag} translation="...">source</{self.tag}>']
 
     def make_token(self, index: int, namespace: str) -> str:
         return f"{namespace}{index}"
