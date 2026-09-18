@@ -173,3 +173,75 @@ class TestRuntimeOrchestration:
         for locale in locales:
             content = json.loads((tmp_path / f"locales/{locale}/messages.json").read_text())
             assert content == {"greeting": f"[{locale}] Hello", "farewell": f"[{locale}] Bye"}
+
+
+class TestRuntimeRunLockSkipping:
+    def test_second_run_skips_translation_when_nothing_changed(self, write_json, tmp_path, monkeypatch):
+        write_json("locales/en/messages.json", {"greeting": "Hello"})
+        call_log = []
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform, call_log=call_log)
+
+        resources = _resources({"paths": ["locales/[source]/messages.json"]})
+        config = _config(resources, ["fr", "es"])
+        Runtime(config, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        call_log.clear()
+        resources2 = _resources({"paths": ["locales/[source]/messages.json"]})
+        config2 = _config(resources2, ["fr", "es"])
+        Runtime(config2, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert call_log == []
+
+    def test_retranslates_only_the_locale_whose_destination_file_was_deleted(self, write_json, tmp_path, monkeypatch):
+        write_json("locales/en/messages.json", {"greeting": "Hello"})
+        call_log = []
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform, call_log=call_log)
+
+        resources = _resources({"paths": ["locales/[source]/messages.json"]})
+        config = _config(resources, ["fr", "es"])
+        Runtime(config, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        (tmp_path / "locales/fr/messages.json").unlink()
+        call_log.clear()
+
+        resources2 = _resources({"paths": ["locales/[source]/messages.json"]})
+        config2 = _config(resources2, ["fr", "es"])
+        Runtime(config2, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert call_log == [(Engine.DeepL, "fr")]
+        assert json.loads((tmp_path / "locales/fr/messages.json").read_text()) == {"greeting": "[fr] Hello"}
+
+    def test_retranslates_every_locale_when_the_source_file_content_changes(self, write_json, tmp_path, monkeypatch):
+        write_json("locales/en/messages.json", {"greeting": "Hello"})
+        call_log = []
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform, call_log=call_log)
+
+        resources = _resources({"paths": ["locales/[source]/messages.json"]})
+        config = _config(resources, ["fr", "es"])
+        Runtime(config, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        write_json("locales/en/messages.json", {"greeting": "Hi there"})
+        call_log.clear()
+
+        resources2 = _resources({"paths": ["locales/[source]/messages.json"]})
+        config2 = _config(resources2, ["fr", "es"])
+        Runtime(config2, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert {target for _, target in call_log} == {"fr", "es"}
+
+    def test_retranslates_every_locale_when_the_engine_changes(self, write_json, tmp_path, monkeypatch):
+        write_json("locales/en/messages.json", {"greeting": "Hello"})
+        call_log = []
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform, call_log=call_log)
+        _register(monkeypatch, Engine.GoogleTranslate, transform=_default_transform, call_log=call_log)
+
+        resources = _resources({"paths": ["locales/[source]/messages.json"]})
+        config = _config(resources, ["fr", "es"], engine=Engine.DeepL)
+        Runtime(config, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        call_log.clear()
+        resources2 = _resources({"paths": ["locales/[source]/messages.json"]})
+        config2 = _config(resources2, ["fr", "es"], engine=Engine.GoogleTranslate)
+        Runtime(config2, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert {target for _, target in call_log} == {"fr", "es"}

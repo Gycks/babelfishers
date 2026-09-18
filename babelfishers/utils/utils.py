@@ -1,3 +1,4 @@
+import hashlib
 import os
 import tempfile
 from collections.abc import Callable
@@ -27,6 +28,15 @@ def get_working_space() -> Path:
 def get_translation_store_storage_path() -> Path:
     path = get_working_space()
     return path.joinpath("store.sqlite")
+
+
+def get_run_lock_storage_path() -> Path:
+    path = get_working_space()
+    return path.joinpath("run.lock")
+
+
+def hash_file_contents(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
 def get_app_config_storage_path() -> Path:
