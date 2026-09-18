@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import threading
+from collections.abc import Collection
 from pathlib import Path
 from typing import Any
 
@@ -87,15 +88,42 @@ class RunLockStore:
             self._logger.info(ConsoleFormatter.info(f"Saving run lock file: {self._destination}"))
             self._save()
 
-    def prune(self) -> None:
-        self._logger.info(ConsoleFormatter.info(f"Removing run lock file: {self._destination}"))
+    def replace(self, entries: list[RunLockEntry]) -> None:
+        """Rebuild the store from `entries` alone, dropping everything recorded before."""
+        with self._write_lock:
+            self._entries = {}
+            for entry in entries:
+                self._entries.setdefault(entry.path, {})[entry.locale] = entry
+            self._logger.info(ConsoleFormatter.info(f"Saving run lock file: {self._destination}"))
+            self._save()
+
+    def remove_orphans(self, live: Collection[tuple[str, str]]) -> int:
+        """Drop every entry whose (path, locale) is not in collection. Returns how many were dropped."""
+        with self._write_lock:
+            kept = {
+                path: {locale: entry for locale, entry in locales.items() if (path, locale) in live}
+                for path, locales in self._entries.items()
+            }
+            kept = {path: locales for path, locales in kept.items() if locales}
+            removed = sum(len(locales) for locales in self._entries.values()) - sum(
+                len(locales) for locales in kept.values()
+            )
+            if removed == 0:
+                return 0
+
+            self._entries = kept
+            self._logger.info(ConsoleFormatter.info(f"Removing {removed} orphaned run lock entries"))
+            self._save()
+            return removed
+
+    def prune(self) -> bool:
+        """Delete the run lock file. Returns False when there was nothing to delete."""
         if not self._destination.exists():
-            self._logger.warning(ConsoleFormatter.warning(f"Run lock file does not exist: {self._destination}"))
-            return
+            return False
 
         self._destination.unlink()
         self._entries = {}
-        self._logger.info(ConsoleFormatter.info(f"Run lock file removed: {self._destination}"))
+        return True
 
 
 def compute_config_fingerprint(config: AppConfig) -> str:

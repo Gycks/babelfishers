@@ -83,6 +83,43 @@ class Runtime:
             # Best-effort: whatever succeeded before a failure is still recorded,
             # so a re-run doesn't re-translate files that already completed.
             self._run_lock_store.create(run_lock_entries)
+            # Entries for files or locales that left the project would otherwise stay forever.
+            self._run_lock_store.remove_orphans({(str(plan.source_path), plan.locale) for plan in plans})
+
+    def refresh_run_lock(self) -> tuple[int, int]:
+        """
+        Rebuild the run lock from the current state alone: the config, the source files and the
+        target files already on disk. Every target that exists is recorded as up to date for its
+        current source, nothing is translated, and entries for anything else are dropped.
+
+        Returns:
+            How many (source file, locale) pairs were recorded, and how many were skipped because
+            the target file does not exist.
+        """
+        entries: list[RunLockEntry] = []
+        skipped = 0
+        now = int(time.time())
+
+        for resource in self._config.resources:
+            for resource_path in resource.paths:
+                content_hash = hash_file_contents(resource_path.path)
+                for locale in self._config.target_locales:
+                    if not resource_path.get_destination_path(locale).exists():
+                        skipped += 1
+                        continue
+
+                    entries.append(
+                        RunLockEntry(
+                            path=str(resource_path.path),
+                            locale=locale,
+                            content_hash=content_hash,
+                            config_fingerprint=self._config_fingerprint,
+                            last_run_at=now,
+                        )
+                    )
+
+        self._run_lock_store.replace(entries)
+        return len(entries), skipped
 
     def _collect_jobs(self, tm_store: TMStore | None) -> tuple[list[LocalePlan], list[_StaleJob]]:
         plans: list[LocalePlan] = []
