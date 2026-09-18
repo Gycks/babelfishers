@@ -6,7 +6,7 @@ from babelfishers.core.run_lock import RunLockStore, compute_config_fingerprint
 from babelfishers.models.app_config import AppConfig
 from babelfishers.models.engine import Engine
 from babelfishers.models.glossary import Glossary, GlossaryTerm
-from babelfishers.models.run_lock import RunLockEntry
+from babelfishers.models.run_lock import RunLockEntry, StaleReason
 
 
 @pytest.fixture
@@ -160,4 +160,44 @@ class TestComputeConfigFingerprint:
 
         assert compute_config_fingerprint(_config(["fr"], glossary=None)) != compute_config_fingerprint(
             _config(["fr"], glossary=glossary)
+        )
+
+
+class TestRunLockStoreStaleReason:
+    def test_stale_reason_is_new_when_never_recorded(self, store, existing_destination):
+        assert store.stale_reason("locales/en/messages.json", "fr", "hash-1", "fp-1", existing_destination) == (
+            StaleReason.NEW
+        )
+
+    def test_stale_reason_is_none_when_hash_fingerprint_and_destination_all_match(self, store, existing_destination):
+        store.create([_entry(content_hash="hash-1", config_fingerprint="fp-1")])
+
+        assert store.stale_reason("locales/en/messages.json", "fr", "hash-1", "fp-1", existing_destination) is None
+
+    def test_stale_reason_is_target_missing_when_only_the_destination_is_gone(self, store, tmp_path):
+        store.create([_entry(content_hash="hash-1", config_fingerprint="fp-1")])
+
+        assert store.stale_reason("locales/en/messages.json", "fr", "hash-1", "fp-1", tmp_path / "gone.json") == (
+            StaleReason.TARGET_MISSING
+        )
+
+    def test_stale_reason_is_content_changed_when_the_source_hash_differs(self, store, existing_destination):
+        store.create([_entry(content_hash="hash-1", config_fingerprint="fp-1")])
+
+        assert store.stale_reason("locales/en/messages.json", "fr", "hash-2", "fp-1", existing_destination) == (
+            StaleReason.CONTENT_CHANGED
+        )
+
+    def test_stale_reason_is_config_changed_when_only_the_fingerprint_differs(self, store, existing_destination):
+        store.create([_entry(content_hash="hash-1", config_fingerprint="fp-1")])
+
+        assert store.stale_reason("locales/en/messages.json", "fr", "hash-1", "fp-2", existing_destination) == (
+            StaleReason.CONFIG_CHANGED
+        )
+
+    def test_stale_reason_prefers_target_missing_over_a_content_change(self, store, tmp_path):
+        store.create([_entry(content_hash="hash-1", config_fingerprint="fp-1")])
+
+        assert store.stale_reason("locales/en/messages.json", "fr", "hash-2", "fp-1", tmp_path / "gone.json") == (
+            StaleReason.TARGET_MISSING
         )

@@ -1,4 +1,13 @@
+from enum import StrEnum
+
 from pydantic import BaseModel
+
+
+class StaleReason(StrEnum):
+    NEW = "new"
+    TARGET_MISSING = "target missing"
+    CONTENT_CHANGED = "source changed"
+    CONFIG_CHANGED = "config changed"
 
 
 class RunLockEntry(BaseModel):

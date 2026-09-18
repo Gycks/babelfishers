@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from babelfishers.models.app_config import AppConfig
-from babelfishers.models.run_lock import RunLockEntry
+from babelfishers.models.run_lock import RunLockEntry, StaleReason
 from babelfishers.utils.console_formater import ConsoleFormatter
 from babelfishers.utils.utils import atomic_write, get_run_lock_storage_path
 
@@ -53,22 +53,28 @@ class RunLockStore:
     def lookup(self, path: str, locale: str) -> RunLockEntry | None:
         return self._entries.get(path, {}).get(locale)
 
+    def stale_reason(
+        self, path: str, locale: str, content_hash: str, config_fingerprint: str, destination_path: Path
+    ) -> StaleReason | None:
+        entry = self.lookup(path, locale)
+        if entry is None:
+            return StaleReason.NEW
+
+        if not destination_path.exists():
+            return StaleReason.TARGET_MISSING
+
+        if entry.content_hash != content_hash:
+            return StaleReason.CONTENT_CHANGED
+
+        if entry.config_fingerprint != config_fingerprint:
+            return StaleReason.CONFIG_CHANGED
+
+        return None
+
     def is_stale(
         self, path: str, locale: str, content_hash: str, config_fingerprint: str, destination_path: Path
     ) -> bool:
-        """True if `path`/`locale` has never run, last ran against different content or a
-        different config, or its destination file is missing (e.g. deleted by hand since
-        the last run). Does not compare the destination file's content: an existing
-        destination is trusted as-is, so a manual edit to it is never overwritten here."""
-
-        if not destination_path.exists():
-            return True
-
-        entry = self.lookup(path, locale)
-        if entry is None:
-            return True
-
-        return entry.content_hash != content_hash or entry.config_fingerprint != config_fingerprint
+        return self.stale_reason(path, locale, content_hash, config_fingerprint, destination_path) is not None
 
     def create(self, entries: list[RunLockEntry]) -> None:
         """Merge `entries` into the store and persist once, regardless of how many are given."""

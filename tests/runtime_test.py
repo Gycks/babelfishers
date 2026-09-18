@@ -5,10 +5,12 @@ from pathlib import Path
 import pytest
 
 from babelfishers.core.runtime import Runtime
+from babelfishers.core.tm_store import TMStore
 from babelfishers.core.translators.registry import translators_registry
 from babelfishers.core.translators.translator import Translator
 from babelfishers.models.app_config import AppConfig
 from babelfishers.models.engine import Engine
+from babelfishers.models.run_lock import StaleReason
 from babelfishers.models.translation_resource import TranslationResource
 
 
@@ -245,3 +247,77 @@ class TestRuntimeRunLockSkipping:
         Runtime(config2, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
 
         assert {target for _, target in call_log} == {"fr", "es"}
+
+
+class TestRuntimePlan:
+    def test_plan_reports_every_locale_as_new_with_a_volume_estimate_before_any_run(
+        self, write_json, tmp_path, monkeypatch
+    ):
+        write_json("locales/en/messages.json", {"greeting": "Hello", "farewell": "Bye"})
+        call_log = []
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform, call_log=call_log)
+
+        config = _config(_resources({"paths": ["locales/[source]/messages.json"]}), ["fr", "es"])
+        plans = Runtime(config, db_storage=tmp_path / "store.sqlite").plan()
+
+        assert {plan.locale for plan in plans} == {"fr", "es"}
+        assert all(plan.stale_reason == StaleReason.NEW for plan in plans)
+        assert all(plan.volume.units_to_translate == 2 for plan in plans)
+        assert call_log == []
+
+    def test_plan_writes_no_files_and_creates_no_state(self, write_json, tmp_path, monkeypatch):
+        write_json("locales/en/messages.json", {"greeting": "Hello"})
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+
+        config = _config(_resources({"paths": ["locales/[source]/messages.json"]}), ["fr"])
+        Runtime(config, db_storage=tmp_path / "store.sqlite").plan()
+
+        assert not (tmp_path / "locales/fr").exists()
+        assert not (tmp_path / "store.sqlite").exists()
+        assert not (tmp_path / ".babelfishers").exists()
+
+    def test_plan_reports_up_to_date_after_a_completed_run(self, write_json, tmp_path, monkeypatch):
+        write_json("locales/en/messages.json", {"greeting": "Hello"})
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+
+        config = _config(_resources({"paths": ["locales/[source]/messages.json"]}), ["fr", "es"])
+        Runtime(config, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+        plans = Runtime(config, db_storage=tmp_path / "store.sqlite").plan()
+
+        assert all(plan.stale_reason is None for plan in plans)
+        assert all(plan.volume is None for plan in plans)
+
+    def test_plan_reports_only_the_deleted_locale_as_target_missing(self, write_json, tmp_path, monkeypatch):
+        write_json("locales/en/messages.json", {"greeting": "Hello"})
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+
+        config = _config(_resources({"paths": ["locales/[source]/messages.json"]}), ["fr", "es"])
+        Runtime(config, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+        (tmp_path / "locales/fr/messages.json").unlink()
+
+        plans = {plan.locale: plan for plan in Runtime(config, db_storage=tmp_path / "store.sqlite").plan()}
+
+        assert plans["fr"].stale_reason == StaleReason.TARGET_MISSING
+        assert plans["es"].stale_reason is None
+
+    def test_plan_counts_cached_units_and_leaves_memory_and_run_lock_untouched(
+        self, write_json, tmp_path, monkeypatch
+    ):
+        write_json("locales/en/messages.json", {"greeting": "Hello"})
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+        db_storage = tmp_path / "store.sqlite"
+        run_lock = tmp_path / ".babelfishers/run.lock"
+
+        monkeypatch.setattr("babelfishers.core.tm_store._now", lambda: 1000)
+        config = _config(_resources({"paths": ["locales/[source]/messages.json"]}), ["fr"])
+        Runtime(config, db_storage=db_storage).orchestrate_translation_workflow()
+        run_lock_before = run_lock.read_bytes()
+
+        (tmp_path / "locales/en/messages.json").write_text(json.dumps({"greeting": "Hello"}, indent=2))
+        monkeypatch.setattr("babelfishers.core.tm_store._now", lambda: 9000)
+        plans = Runtime(config, db_storage=db_storage).plan()
+
+        assert plans[0].stale_reason == StaleReason.CONTENT_CHANGED
+        assert (plans[0].volume.cached_units, plans[0].volume.units_to_translate) == (1, 0)
+        assert TMStore(db_storage).stats().newest_used_ts == 1000
+        assert run_lock.read_bytes() == run_lock_before

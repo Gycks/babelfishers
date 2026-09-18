@@ -350,3 +350,78 @@ class TestTranslationPipelineGlossaryIntegration:
         pipeline.run(parse_result, "en", "fr", Path("/tmp/out.json"))
 
         assert written["k1"] == "I bought a Gadget yesterday"
+
+
+class TestTranslationPipelinePlan:
+    def test_plan_splits_cached_and_uncached_units_without_calling_the_translator(self, tm_store, monkeypatch):
+        tm_store.store("Hello", "en", "fr", "Bonjour", "deepl")
+        call_log = []
+        _register(monkeypatch, Engine.DeepL, _echo_translator(Engine.DeepL, call_log))
+
+        pipeline = TranslationPipeline([Engine.DeepL], glossary=None, translation_store=tm_store)
+        parse_result = _parse_result([_unit("k1", "Hello", {}), _unit("k2", "Goodbye", {})])
+
+        estimate = pipeline.plan(parse_result, "en", "fr")
+
+        assert (estimate.units_total, estimate.cached_units, estimate.units_to_translate) == (2, 1, 1)
+        assert call_log == []
+
+    def test_plan_counts_characters_only_for_units_that_would_be_sent(self, tm_store):
+        tm_store.store("Hello", "en", "fr", "Bonjour", "deepl")
+
+        pipeline = TranslationPipeline([Engine.DeepL], glossary=None, translation_store=tm_store)
+        parse_result = _parse_result([_unit("k1", "Hello", {}), _unit("k2", "Goodbye", {})])
+
+        assert pipeline.plan(parse_result, "en", "fr").characters == len("Goodbye")
+
+    def test_plan_does_not_write_back_save_or_bump_last_used(self, tm_store, monkeypatch):
+        monkeypatch.setattr("babelfishers.core.tm_store._now", lambda: 1000)
+        tm_store.store("Hello", "en", "fr", "Bonjour", "deepl")
+        monkeypatch.setattr("babelfishers.core.tm_store._now", lambda: 9000)
+
+        written = {}
+        saved = []
+        pipeline = TranslationPipeline([Engine.DeepL], glossary=None, translation_store=tm_store)
+        parse_result = _parse_result(
+            [_unit("k1", "Hello", written), _unit("k2", "Goodbye", written)], save=saved.append
+        )
+
+        pipeline.plan(parse_result, "en", "fr")
+
+        stats = tm_store.stats()
+        assert written == {}
+        assert saved == []
+        assert (stats.total_entries, stats.newest_used_ts) == (1, 1000)
+
+    def test_plan_treats_every_unit_as_uncached_when_there_is_no_translation_store(self):
+        pipeline = TranslationPipeline([Engine.DeepL], glossary=None, translation_store=None)
+        parse_result = _parse_result([_unit("k1", "Hello", {})])
+
+        estimate = pipeline.plan(parse_result, "en", "fr")
+
+        assert (estimate.cached_units, estimate.units_to_translate) == (0, 1)
+
+    def test_plan_excludes_units_the_glossary_resolves_without_the_provider(self, tm_store):
+        glossary = Glossary(
+            terms=[GlossaryTerm(term="Widget", translatable=False, context="", translations={"fr": "Gadget"})]
+        )
+        pipeline = TranslationPipeline([Engine.DeepL], glossary=glossary, translation_store=tm_store)
+        parse_result = _parse_result([_unit("k1", "Widget", {}), _unit("k2", "Goodbye", {})])
+
+        estimate = pipeline.plan(parse_result, "en", "fr")
+
+        assert estimate.units_to_translate == 1
+        assert estimate.characters == len("Goodbye")
+
+
+class TestTranslationPipelineWithoutStore:
+    def test_run_translates_and_writes_without_a_translation_store(self, monkeypatch):
+        _register(monkeypatch, Engine.DeepL, _echo_translator(Engine.DeepL))
+
+        written = {}
+        pipeline = TranslationPipeline([Engine.DeepL], glossary=None, translation_store=None)
+        parse_result = _parse_result([_unit("k1", "Hello", written)])
+
+        pipeline.run(parse_result, "en", "fr", Path("/tmp/out.json"))
+
+        assert written["k1"] == "Hello"

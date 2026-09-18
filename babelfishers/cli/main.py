@@ -8,6 +8,7 @@ from babelfishers.cli import ui
 from babelfishers.cli.commands import COMMANDS
 from babelfishers.utils.console_formater import ConsoleFormatter
 
+
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 _logger: logging.Logger = logging.getLogger(__name__)
 

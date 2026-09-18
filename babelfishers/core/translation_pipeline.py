@@ -9,6 +9,7 @@ from babelfishers.core.tm_store import TMStore
 from babelfishers.core.translators.translator_factory import TranslatorFactory
 from babelfishers.models.engine import Engine
 from babelfishers.models.glossary import Glossary
+from babelfishers.models.plan import VolumeEstimate
 from babelfishers.models.translation_resource import TranslationResourceType
 from babelfishers.models.translations import ParseResult, TranslationUnit
 from babelfishers.utils.console_formater import ConsoleFormatter
@@ -23,15 +24,22 @@ class TranslationPipeline:
         self,
         translation_engines: list[Engine],
         glossary: Glossary | None,
-        translation_store: TMStore,
-        dry_run: bool = False,
+        translation_store: TMStore | None,
     ) -> None:
 
         self._logger: logging.Logger = logging.getLogger(__name__)
         self._translation_engines: list[Engine] = translation_engines
         self._glossary: Glossary | None = glossary
-        self._translation_store: TMStore = translation_store
-        self._dry_run: bool = dry_run
+        self._translation_store: TMStore | None = translation_store
+
+    def _lookup_cache(
+        self, units: list[TranslationUnit], source: str, target: str
+    ) -> list[tuple[TranslationUnit, str | None]]:
+        store = self._translation_store
+        if store is None:
+            return [(unit, None) for unit in units]
+
+        return [(unit, store.lookup(unit.source_text, source, target)) for unit in units]
 
     def _cache_split_translation_units(
         self, units: list[TranslationUnit], source: str, target: str
@@ -58,18 +66,62 @@ class TranslationPipeline:
         hit_keys = []
         misses = []
 
-        for unit in units:
-            cache = self._translation_store.lookup(unit.source_text, source, target)
-            if cache is not None:
-                unit.translated_text = cache
+        for unit, cached in self._lookup_cache(units, source, target):
+            if cached is not None:
+                unit.translated_text = cached
                 hits.append(unit)
                 hit_keys.append(TMStore.make_key(unit.source_text, source, target))
             else:
                 misses.append(unit)
 
-        self._translation_store.bump_last_used_for_keys(hit_keys)
+        if self._translation_store is not None:
+            self._translation_store.bump_last_used_for_keys(hit_keys)
 
         return hits, misses
+
+    def _units_sent_to_provider(self, units: list[TranslationUnit], target_locale: str) -> list[TranslationUnit]:
+        """
+        Apply the same protection guards as a real run, using the engine that would be
+        tried first, and return the units that would actually reach the provider.
+        """
+        if not units:
+            return []
+
+        engine = self._translation_engines[0]
+        protected = PlaceholderGuard(engine).protect(units)
+        if self._glossary:
+            protected = GlossaryGuard(self._glossary, target_locale, engine).protect(protected)
+
+        return [unit for unit in protected if not unit.skip_translation]
+
+    def plan(self, parse_result: ParseResult, source_locale: str, target_locale: str) -> VolumeEstimate:
+        """
+        Estimate what `run` would send to the provider, without translating, writing
+        or touching the translation memory.
+
+        The cached/uncached split is exact. The character count is an estimate: it
+        assumes no retry or fallback engine is needed.
+
+        Args:
+            parse_result: The parsed source document.
+            source_locale: Source language code.
+            target_locale: Target language code.
+
+        Returns:
+            The unit counts and the number of characters that would be sent.
+        """
+        self._warn_on_missing_plural_categories(parse_result.units, target_locale)
+
+        lookups = self._lookup_cache(parse_result.units, source_locale, target_locale)
+        misses = [unit for unit, cached in lookups if cached is None]
+        outgoing = self._units_sent_to_provider(misses, target_locale)
+
+        return VolumeEstimate(
+            units_total=len(parse_result.units),
+            cached_units=len(parse_result.units) - len(misses),
+            units_to_translate=len(outgoing),
+            characters=sum(len(unit.source_text) for unit in outgoing),
+        )
 
     def _run_translate(
         self,
@@ -193,5 +245,8 @@ class TranslationPipeline:
 
         parse_result.save(destination_path)
 
-        query_data = [(unit.source_text, source_locale, target_locale, unit.translated_text) for unit in cache_misses]
-        self._translation_store.store_batch(query_data, engine_used)
+        if self._translation_store is not None:
+            query_data = [
+                (unit.source_text, source_locale, target_locale, unit.translated_text) for unit in cache_misses
+            ]
+            self._translation_store.store_batch(query_data, engine_used)

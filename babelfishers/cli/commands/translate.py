@@ -2,6 +2,7 @@ import click
 
 from babelfishers.cli import ui
 from babelfishers.cli.errors import CliError
+from babelfishers.cli.reports import render_dry_run
 
 
 @click.command(name="translate", help="Translate the project files.")
@@ -14,10 +15,14 @@ def translate(dry_run: bool) -> None:
     config_path = get_app_config_storage_path()
     if not config_path.exists():
         raise CliError(
-            f"No Babel Fishers project found at {config_path}. "
-            f"Run '{ui.command('babelfishers init')}' first."
+            f"No Babel Fishers project found at {config_path}. Run '{ui.command('babelfishers init')}' first."
         )
 
     app_config = AppConfig.load(config_path)
-    runner = Runtime(app_config, dry_run=dry_run)
+    runner = Runtime(app_config)
+
+    if dry_run:
+        render_dry_run(runner.plan())
+        return
+
     runner.orchestrate_translation_workflow()

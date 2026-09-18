@@ -48,6 +48,29 @@ def row(label: str, value: str) -> None:
     click.echo(f"  {hint((label + ' ').ljust(18, '.'))} {value}")
 
 
+def table(
+    headers: list[str],
+    rows: list[list[str]],
+    numeric: set[int] | None = None,
+    dimmed: set[int] | None = None,
+) -> None:
+    numeric = numeric or set()
+    dimmed = dimmed or set()
+    widths = [max([len(header)] + [len(row[index]) for row in rows]) for index, header in enumerate(headers)]
+
+    def render(cells: list[str]) -> str:
+        padded = [
+            cell.rjust(widths[index]) if index in numeric else cell.ljust(widths[index])
+            for index, cell in enumerate(cells)
+        ]
+        return "  ".join(padded).rstrip()
+
+    click.echo(f"  {click.style(render(headers), bold=True)}")
+    for index, row in enumerate(rows):
+        line = render(row)
+        click.echo(f"  {hint(line) if index in dimmed else line}")
+
+
 def toml_preview(text: str) -> None:
     for line in text.splitlines():
         stripped = line.strip()
