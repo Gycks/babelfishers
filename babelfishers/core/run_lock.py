@@ -78,6 +78,7 @@ class RunLockStore:
         with self._write_lock:
             for entry in entries:
                 self._entries.setdefault(entry.path, {})[entry.locale] = entry
+            self._logger.info(ConsoleFormatter.info(f"Saving run lock file: {self._destination}"))
             self._save()
 
     def prune(self) -> None:
