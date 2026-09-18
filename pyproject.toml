@@ -40,6 +40,12 @@ dev = [
     "pytest (>=9.1.1,<10.0.0)",
 ]
 
+[tool.pytest.ini_options]
+markers = [
+    "integration",
+]
+addopts = "-m 'not integration'"
+
 [tool.ruff]
 line-length = 120
 target-version = "py311"
@@ -89,3 +95,4 @@ lint = {sequence = [{cmd = "ruff check babelfishers --fix"}, {cmd = "ruff format
 typecheck = {cmd = "mypy"}
 check = ["lint", "typecheck"]
 test = {cmd = "pytest tests/*_test.py"}
+test-integration = {cmd = "pytest tests/*_test.py -m integration"}
