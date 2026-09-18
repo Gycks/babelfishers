@@ -1,3 +1,4 @@
+from datetime import UTC, datetime
 from pathlib import Path
 
 import click
@@ -7,6 +8,7 @@ from babelfishers.core.supported_cultures import SUPPORTED_CULTURES
 from babelfishers.models.engine import Engine
 from babelfishers.models.plan import LocalePlan
 from babelfishers.models.translation_resource import TranslationResourceType
+from babelfishers.models.translations import StoreStats
 
 
 _HEADERS = ["File", "Locale", "Status", "Units", "Cached", "To translate", "Chars", "Engine"]
@@ -115,3 +117,26 @@ def render_locales(term: str | None = None) -> None:
     ui.title(f"{heading} ({len(cultures)})")
     click.echo()
     ui.grid([(culture.code, culture.name) for culture in cultures])
+
+
+def _date(timestamp: int | None) -> str:
+    return "-" if timestamp is None else datetime.fromtimestamp(timestamp, UTC).strftime("%Y-%m-%d")
+
+
+def render_memory_stats(stats: StoreStats) -> None:
+    ui.title("Translation memory")
+    click.echo()
+    ui.row("Entries", f"{stats.total_entries:,}")
+    ui.row("Size", f"{stats.size_mb:.2f} MB")
+    ui.row("Oldest entry", _date(stats.oldest_entry_ts))
+    ui.row("Last used", _date(stats.newest_used_ts))
+
+    if not stats.by_engine:
+        return
+
+    click.echo()
+    ui.table(
+        ["Engine", "Entries"],
+        [[engine, f"{count:,}"] for engine, count in sorted(stats.by_engine.items())],
+        numeric={1},
+    )
