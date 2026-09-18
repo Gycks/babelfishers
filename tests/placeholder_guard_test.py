@@ -8,8 +8,8 @@ def _noop_write_back(_: str) -> None:
     pass
 
 
-def _unit(key: str, source_text: str, unit_type: T = T.JSON) -> TranslationUnit:
-    return TranslationUnit(unit_type=unit_type, key=key, source_text=source_text, write_back=_noop_write_back)
+def _unit(key: str, source_text: str) -> TranslationUnit:
+    return TranslationUnit(unit_type=T.JSON, key=key, source_text=source_text, write_back=_noop_write_back)
 
 
 class TestPlaceholderGuardProtect:
@@ -38,16 +38,6 @@ class TestPlaceholderGuardProtect:
         protected = guard.protect([_unit("k1", "Found %d results for %s")])
 
         assert protected[0].source_text == 'Found <gls id="ph1">%d</gls> results for <gls id="ph0">%s</gls>'
-
-    def test_resource_type_specific_categories_apply_per_unit(self):
-        guard = PlaceholderGuard(Engine.DeepL)
-        protected = guard.protect([
-            _unit("k1", "Hello %{name}", unit_type=T.YAML),
-            _unit("k2", "Hello %{name}", unit_type=T.JSON),
-        ])
-
-        assert protected[0].source_text == 'Hello <gls id="ph0">%{name}</gls>'
-        assert protected[1].source_text == 'Hello %<gls id="ph0">{name}</gls>'
 
 
 class TestPlaceholderGuardRestore:

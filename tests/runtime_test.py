@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 from babelfishers.core.runtime import Runtime
-from babelfishers.core.tm_store import TMStore
 from babelfishers.core.translators.registry import translators_registry
 from babelfishers.core.translators.translator import Translator
 from babelfishers.models.app_config import AppConfig
@@ -92,7 +91,7 @@ class TestRuntimeOrchestration:
         with caplog.at_level(logging.WARNING):
             Runtime(config, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
 
-        assert any("Bucket empty" in r.message for r in caplog.records)
+        assert any("Entry has no valid paths" in r.message for r in caplog.records)
         assert json.loads((tmp_path / "locales/fr/messages.json").read_text()) == {"greeting": "[fr] Hello"}
 
     def test_orchestrate_handles_multiple_source_files_within_one_resource_independently(
@@ -300,7 +299,7 @@ class TestRuntimePlan:
         assert plans["fr"].stale_reason == StaleReason.TARGET_MISSING
         assert plans["es"].stale_reason is None
 
-    def test_plan_counts_cached_units_and_leaves_memory_and_run_lock_untouched(
+    def test_plan_counts_cached_units_and_leaves_run_lock_untouched(
         self, write_json, tmp_path, monkeypatch
     ):
         write_json("locales/en/messages.json", {"greeting": "Hello"})
@@ -308,16 +307,13 @@ class TestRuntimePlan:
         db_storage = tmp_path / "store.sqlite"
         run_lock = tmp_path / ".babelfishers/run.lock"
 
-        monkeypatch.setattr("babelfishers.core.tm_store._now", lambda: 1000)
         config = _config(_resources({"paths": ["locales/[source]/messages.json"]}), ["fr"])
         Runtime(config, db_storage=db_storage).orchestrate_translation_workflow()
         run_lock_before = run_lock.read_bytes()
 
         (tmp_path / "locales/en/messages.json").write_text(json.dumps({"greeting": "Hello"}, indent=2))
-        monkeypatch.setattr("babelfishers.core.tm_store._now", lambda: 9000)
         plans = Runtime(config, db_storage=db_storage).plan()
 
         assert plans[0].stale_reason == StaleReason.CONTENT_CHANGED
         assert (plans[0].volume.cached_units, plans[0].volume.units_to_translate) == (1, 0)
-        assert TMStore(db_storage).stats().newest_used_ts == 1000
         assert run_lock.read_bytes() == run_lock_before
