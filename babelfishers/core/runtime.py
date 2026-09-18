@@ -38,6 +38,13 @@ class Runtime:
             with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
                 futures: dict[Future[RunLockEntry], str] = {}
 
+                if len(self._config.resources) == 0:
+                    self._logger.warning(
+                        ConsoleFormatter.warning(
+                            "No resources found in the configuration. Please check your configuration file."
+                        )
+                    )
+
                 for resource in self._config.resources:
                     if len(resource.paths) == 0:
                         self._logger.warning(

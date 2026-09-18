@@ -65,6 +65,8 @@ class AppConfig(BaseModel):
         if translation_block is not None:
             glossary = Glossary.load(translation_block.get("glossary"))
 
+        logger.info(ConsoleFormatter.info("Successfully loaded app configuration"))
+
         return cls(
             source_locale=source_locale,
             target_locales=target_locales,
