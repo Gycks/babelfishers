@@ -3,8 +3,10 @@ from pathlib import Path
 import click
 
 from babelfishers.cli import ui
+from babelfishers.core.supported_cultures import SUPPORTED_CULTURES
 from babelfishers.models.engine import Engine
 from babelfishers.models.plan import LocalePlan
+from babelfishers.models.translation_resource import TranslationResourceType
 
 
 _HEADERS = ["File", "Locale", "Status", "Units", "Cached", "To translate", "Chars", "Engine"]
@@ -86,3 +88,30 @@ def render_dry_run(plans: list[LocalePlan]) -> None:
     ui.row("Engines", chains)
     click.echo()
     click.echo(ui.hint("Unit counts are exact. Characters are an estimate, they assume no retry or fallback. "))
+
+
+def render_formats() -> None:
+    ui.title(f"Supported formats ({len(TranslationResourceType)})")
+    click.echo()
+    ui.grid([(resource_type.value, "") for resource_type in TranslationResourceType])
+
+
+def render_locales(term: str | None = None) -> None:
+    needle = (term or "").strip().lower()
+    cultures = sorted(
+        (
+            culture
+            for culture in SUPPORTED_CULTURES.values()
+            if needle in culture.code.lower() or needle in culture.name.lower()
+        ),
+        key=lambda culture: culture.code,
+    )
+
+    if not cultures:
+        click.echo(f"No locale matches '{term}'. Run {ui.command('babelfishers locales')} to list them all.")
+        return
+
+    heading = f"Locales matching '{term}'" if needle else "Supported locales"
+    ui.title(f"{heading} ({len(cultures)})")
+    click.echo()
+    ui.grid([(culture.code, culture.name) for culture in cultures])

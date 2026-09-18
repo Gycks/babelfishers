@@ -1,4 +1,6 @@
+import math
 import os
+import shutil
 from pathlib import Path
 
 import click
@@ -22,6 +24,10 @@ def step(index: int, total: int, label: str) -> str:
 
 def hint(text: str) -> str:
     return click.style(text, dim=True)
+
+
+def accent(text: str) -> str:
+    return click.style(text, fg="blue", bold=True)
 
 
 def command(text: str) -> str:
@@ -69,6 +75,32 @@ def table(
     for index, row in enumerate(rows):
         line = render(row)
         click.echo(f"  {hint(line) if index in dimmed else line}")
+
+
+def grid(items: list[tuple[str, str]], gap: int = 3) -> None:
+    """Print (key, label) pairs in as many columns as fit the terminal, filled top to bottom like `ls`."""
+    if not items:
+        return
+
+    key_width = max(len(key) for key, _ in items)
+    label_width = max(len(label) for _, label in items)
+    available = shutil.get_terminal_size(fallback=(80, 24)).columns - 2
+    columns = min(len(items), max(1, (available + gap) // (key_width + 2 + label_width + gap)))
+    rows = math.ceil(len(items) / columns)
+
+    for row_index in range(rows):
+        cells = []
+        for column_index in range(columns):
+            item_index = column_index * rows + row_index
+            if item_index >= len(items):
+                break
+
+            key, label = items[item_index]
+            is_last_in_row = column_index == columns - 1 or item_index + rows >= len(items)
+            padded_key = key if is_last_in_row and not label else key.ljust(key_width)
+            cells.append(f"{accent(padded_key)}  {label.ljust(label_width)}")
+
+        click.echo(f"  {(' ' * gap).join(cells)}".rstrip())
 
 
 def toml_preview(text: str) -> None:
