@@ -1,3 +1,4 @@
+import os
 from datetime import datetime
 from enum import StrEnum
 
@@ -18,7 +19,7 @@ class ConsoleFormatter:
         self._app_prefix: str = app_prefix.strip()
         self._theme: StyleTheme = StyleTheme()
         self._show_time: bool = True
-        self._use_color: bool = True
+        self._use_color: bool = not os.environ.get("NO_COLOR")
 
     @staticmethod
     def info(msg: str) -> str:

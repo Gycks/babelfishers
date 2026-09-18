@@ -40,7 +40,7 @@ def hash_file_contents(path: Path) -> str:
 
 
 def get_app_config_storage_path() -> Path:
-    path = get_working_space()
+    path = Path.cwd().resolve()
     return path.joinpath(f"{APPLICATION_NAME}.toml")
 
 
