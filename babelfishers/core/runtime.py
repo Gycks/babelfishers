@@ -10,7 +10,7 @@ from babelfishers.core.tm_store import TMStore
 from babelfishers.core.translation_pipeline import TranslationPipeline
 from babelfishers.models.app_config import AppConfig
 from babelfishers.models.engine import Engine
-from babelfishers.models.plan import LocalePlan
+from babelfishers.models.plan import LocalePlan, RunResult
 from babelfishers.models.run_lock import RunLockEntry
 from babelfishers.models.translations import ParseResult
 from babelfishers.utils.console_formater import ConsoleFormatter
@@ -57,34 +57,61 @@ class Runtime:
 
         return plans
 
-    def orchestrate_translation_workflow(self) -> None:
-        plans, stale_jobs = self._collect_jobs(TMStore(self._tm_store_path))
+    def orchestrate_translation_workflow(self) -> RunResult:
+        """
+        Translate every source file and target locale that is stale, then record the run.
+
+        Locales run concurrently. Whatever completed is recorded in the run lock even if another
+        locale fails, so a re-run does not translate it again. Run lock entries for files or
+        locales that are no longer part of the project are dropped.
+
+        Returns:
+            What the run changed. `translated` lists the target files that were written. `state`
+            lists the run lock, whenever it was rewritten (files were translated or stale entries
+            were dropped), and the translation memory database, whenever files were translated. The
+            database is checkpointed first, so the main file is complete on its own. Both lists are
+            empty when nothing changed.
+        """
+        tm_store = TMStore(self._tm_store_path)
+        plans, stale_jobs = self._collect_jobs(tm_store)
         self._log_up_to_date(plans)
 
         run_lock_entries: list[RunLockEntry] = []
+        translated: list[Path] = []
 
         try:
             with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
-                futures: dict[Future[RunLockEntry], str] = {
-                    executor.submit(self._run_single_locale, job): (
-                        f"[{self._config.source_locale} - {job.plan.locale}] {job.plan.source_path}"
-                    )
-                    for job in stale_jobs
+                futures: dict[Future[RunLockEntry], _StaleJob] = {
+                    executor.submit(self._run_single_locale, job): job for job in stale_jobs
                 }
 
                 for future in as_completed(futures):
-                    job_label = futures[future]
+                    job = futures[future]
                     try:
                         run_lock_entries.append(future.result())
+                        translated.append(job.plan.destination.resolve())
                     except Exception as exe:
-                        self._logger.exception(ConsoleFormatter.error(f"{job_label} -> Pipeline failed"), exc_info=exe)
+                        self._logger.exception(
+                            ConsoleFormatter.error(f"{self._label(job)} -> Pipeline failed"), exc_info=exe
+                        )
                         raise
         finally:
             # Best-effort: whatever succeeded before a failure is still recorded,
             # so a re-run doesn't re-translate files that already completed.
             self._run_lock_store.create(run_lock_entries)
             # Entries for files or locales that left the project would otherwise stay forever.
-            self._run_lock_store.remove_orphans({(str(plan.source_path), plan.locale) for plan in plans})
+            orphans_removed = self._run_lock_store.remove_orphans(
+                {(str(plan.source_path), plan.locale) for plan in plans}
+            )
+
+        state: list[Path] = []
+        if translated:
+            tm_store.checkpoint()
+            state.append(self._tm_store_path.resolve())
+        if translated or orphans_removed:
+            state.append(self._run_lock_store.storage_path.resolve())
+
+        return RunResult(translated=translated, state=state)
 
     def refresh_run_lock(self) -> tuple[int, int]:
         """
@@ -208,19 +235,17 @@ class Runtime:
                 ConsoleFormatter.info(f"{plan.source_path} -> Up to date for every target locale, skipping")
             )
 
+    def _label(self, job: _StaleJob) -> str:
+        return f"[{self._config.source_locale} - {job.plan.locale}] {job.plan.source_path}"
+
     def _run_single_locale(self, job: _StaleJob) -> RunLockEntry:
         plan = job.plan
-        source_locale = self._config.source_locale
 
-        self._logger.info(
-            ConsoleFormatter.info(f"[{source_locale} - {plan.locale}] -> Running translation for {plan.source_path}")
-        )
+        self._logger.info(ConsoleFormatter.info(f"{self._label(job)} -> Running translation"))
 
-        job.pipeline.run(job.parse_result, source_locale, plan.locale, plan.destination)
+        job.pipeline.run(job.parse_result, self._config.source_locale, plan.locale, plan.destination)
 
-        self._logger.info(
-            ConsoleFormatter.success(f"[{source_locale} - {plan.locale}] -> Pipeline success for {plan.source_path}")
-        )
+        self._logger.info(ConsoleFormatter.success(f"{self._label(job)} -> Pipeline success"))
 
         return RunLockEntry(
             path=str(plan.source_path),

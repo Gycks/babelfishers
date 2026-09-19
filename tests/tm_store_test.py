@@ -282,3 +282,14 @@ class TestTMStoreConcurrency:
         rows = {row.key: row.last_used for row in _all_rows(store)}
         for i in range(n):
             assert rows[TMStore.make_key(f"text-{i}", "en", "fr")] == 9000
+
+
+class TestTMStoreCheckpoint:
+    def test_checkpoint_makes_the_main_file_complete_without_the_wal(self, store, tmp_path):
+        store.store("Hello", "en", "fr", "Bonjour", "deepl")
+
+        store.checkpoint()
+
+        copy = tmp_path / "copy.sqlite3"
+        copy.write_bytes((tmp_path / "tm.sqlite3").read_bytes())
+        assert TMStore(copy).lookup("Hello", "en", "fr") == "Bonjour"

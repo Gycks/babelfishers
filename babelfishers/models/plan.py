@@ -24,3 +24,15 @@ class LocalePlan(BaseModel):
     @property
     def is_stale(self) -> bool:
         return self.stale_reason is not None
+
+
+class RunResult(BaseModel):
+    """What a translation run changed on disk. All paths are absolute."""
+
+    translated: list[Path] = []
+    state: list[Path] = []
+
+    @property
+    def paths(self) -> list[Path]:
+        """Every changed path, target files first. Empty when the run changed nothing."""
+        return [*self.translated, *self.state]

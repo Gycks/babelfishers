@@ -239,6 +239,11 @@ class TMStore:
         with self._write_lock, self._engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
             connection.execute(text("VACUUM"))
 
+    def checkpoint(self) -> None:
+        """Fold the write-ahead log into the main database file, so that file is complete on its own."""
+        with self._write_lock, self._engine.connect().execution_options(isolation_level="AUTOCOMMIT") as connection:
+            connection.execute(text("PRAGMA wal_checkpoint(TRUNCATE)"))
+
     def clear(self) -> None:
         """Wipe the entire store."""
         with self._write_lock, Session(self._engine) as session:

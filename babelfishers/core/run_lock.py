@@ -27,6 +27,10 @@ class RunLockStore:
         self._write_lock = threading.Lock()
         self._entries: dict[str, dict[str, RunLockEntry]] = self._load()
 
+    @property
+    def storage_path(self) -> Path:
+        return self._destination
+
     def _load(self) -> dict[str, dict[str, RunLockEntry]]:
         if not self._destination.exists():
             return {}

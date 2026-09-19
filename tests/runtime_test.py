@@ -177,6 +177,45 @@ class TestRuntimeOrchestration:
             assert content == {"greeting": f"[{locale}] Hello", "farewell": f"[{locale}] Bye"}
 
 
+class TestRuntimeOrchestrationResult:
+    def test_reports_the_translated_files_and_the_state_files_that_changed(self, write_json, tmp_path, monkeypatch):
+        write_json("locales/en/messages.json", {"greeting": "Hello"})
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+
+        config = _config(_resources({"paths": ["locales/[source]/messages.json"]}), ["fr", "es"])
+        result = Runtime(config, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert set(result.translated) == {
+            (tmp_path / "locales/fr/messages.json").resolve(),
+            (tmp_path / "locales/es/messages.json").resolve(),
+        }
+        assert result.state == [(tmp_path / "store.sqlite").resolve(), (tmp_path / ".babelfishers/run.lock").resolve()]
+        assert result.paths == [*result.translated, *result.state]
+
+    def test_reports_nothing_when_nothing_needed_translating(self, write_json, tmp_path, monkeypatch):
+        write_json("locales/en/messages.json", {"greeting": "Hello"})
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+        config = _config(_resources({"paths": ["locales/[source]/messages.json"]}), ["fr"])
+        Runtime(config, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        result = Runtime(config, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert result.paths == []
+
+    def test_reports_the_run_lock_when_only_orphaned_entries_were_dropped(self, write_json, tmp_path, monkeypatch):
+        write_json("locales/en/messages.json", {"greeting": "Hello"})
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+        resources = _resources({"paths": ["locales/[source]/messages.json"]})
+        both = _config(resources, ["fr", "es"])
+        Runtime(both, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        fr_only = _config(_resources({"paths": ["locales/[source]/messages.json"]}), ["fr"])
+        result = Runtime(fr_only, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert result.translated == []
+        assert result.state == [(tmp_path / ".babelfishers/run.lock").resolve()]
+
+
 class TestRuntimeRunLockSkipping:
     def test_second_run_skips_translation_when_nothing_changed(self, write_json, tmp_path, monkeypatch):
         write_json("locales/en/messages.json", {"greeting": "Hello"})
