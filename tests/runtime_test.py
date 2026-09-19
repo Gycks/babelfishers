@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from babelfishers.core.run_lock import RunLockStore
 from babelfishers.core.runtime import Runtime
 from babelfishers.core.translators.registry import translators_registry
 from babelfishers.core.translators.translator import Translator
@@ -248,6 +249,41 @@ class TestRuntimeRunLockSkipping:
         assert {target for _, target in call_log} == {"fr", "es"}
 
 
+class TestRuntimeRunLockOrphans:
+    def test_a_run_drops_entries_for_locales_removed_from_the_config(self, write_json, tmp_path, monkeypatch):
+        write_json("locales/en/messages.json", {"greeting": "Hello"})
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+        source = "locales/en/messages.json"
+
+        resources = _resources({"paths": ["locales/[source]/messages.json"]})
+        two_locales = _config(resources, ["fr", "es"])
+        Runtime(two_locales, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+        assert RunLockStore().lookup(source, "es") is not None
+
+        resources2 = _resources({"paths": ["locales/[source]/messages.json"]})
+        Runtime(_config(resources2, ["fr"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        lock = RunLockStore()
+        assert lock.lookup(source, "es") is None
+        assert lock.lookup(source, "fr") is not None
+
+    def test_a_run_drops_entries_for_source_files_that_no_longer_exist(self, write_json, tmp_path, monkeypatch):
+        write_json("locales/en/a.json", {"greeting": "Hello"})
+        write_json("locales/en/b.json", {"greeting": "Bye"})
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+
+        both = _resources({"paths": ["locales/[source]/a.json", "locales/[source]/b.json"]})
+        Runtime(_config(both, ["fr"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+        (tmp_path / "locales/en/b.json").unlink()
+
+        only_a = _resources({"paths": ["locales/[source]/a.json"]})
+        Runtime(_config(only_a, ["fr"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        lock = RunLockStore()
+        assert lock.lookup("locales/en/a.json", "fr") is not None
+        assert lock.lookup("locales/en/b.json", "fr") is None
+
+
 class TestRuntimePlan:
     def test_plan_reports_every_locale_as_new_with_a_volume_estimate_before_any_run(
         self, write_json, tmp_path, monkeypatch
@@ -317,3 +353,63 @@ class TestRuntimePlan:
         assert plans[0].stale_reason == StaleReason.CONTENT_CHANGED
         assert (plans[0].volume.cached_units, plans[0].volume.units_to_translate) == (1, 0)
         assert run_lock.read_bytes() == run_lock_before
+
+
+class TestRuntimeRefreshRunLock:
+    def test_refresh_rebuilds_the_lock_dropping_entries_the_current_state_does_not_justify(
+        self, write_json, tmp_path, monkeypatch
+    ):
+        write_json("locales/en/messages.json", {"greeting": "Hello"})
+        write_json("locales/fr/messages.json", {"greeting": "Bonjour"})
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+        source = "locales/en/messages.json"
+
+        resources = _resources({"paths": ["locales/[source]/messages.json"]})
+        two_locales = _config(resources, ["fr", "es"])
+        Runtime(two_locales, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        resources2 = _resources({"paths": ["locales/[source]/messages.json"]})
+        Runtime(_config(resources2, ["fr"]), db_storage=tmp_path / "store.sqlite").refresh_run_lock()
+
+        lock = RunLockStore()
+        assert lock.lookup(source, "es") is None
+        assert lock.lookup(source, "fr") is not None
+
+    def test_refresh_makes_existing_targets_up_to_date_without_translating(self, write_json, tmp_path, monkeypatch):
+        write_json("locales/en/messages.json", {"greeting": "Hello"})
+        write_json("locales/fr/messages.json", {"greeting": "Bonjour"})
+        call_log = []
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform, call_log=call_log)
+
+        config = _config(_resources({"paths": ["locales/[source]/messages.json"]}), ["fr"])
+        runtime = Runtime(config, db_storage=tmp_path / "store.sqlite")
+
+        assert runtime.refresh_run_lock() == (1, 0)
+        assert all(plan.stale_reason is None for plan in runtime.plan())
+        assert call_log == []
+
+    def test_refresh_skips_locales_whose_target_is_missing_and_leaves_them_new(self, write_json, tmp_path, monkeypatch):
+        write_json("locales/en/messages.json", {"greeting": "Hello"})
+        write_json("locales/fr/messages.json", {"greeting": "Bonjour"})
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+
+        config = _config(_resources({"paths": ["locales/[source]/messages.json"]}), ["fr", "es"])
+        runtime = Runtime(config, db_storage=tmp_path / "store.sqlite")
+
+        assert runtime.refresh_run_lock() == (1, 1)
+        plans = {plan.locale: plan for plan in runtime.plan()}
+        assert plans["fr"].stale_reason is None
+        assert plans["es"].stale_reason == StaleReason.NEW
+
+    def test_refresh_records_the_current_source_so_a_later_edit_is_detected(self, write_json, tmp_path, monkeypatch):
+        write_json("locales/en/messages.json", {"greeting": "Hello"})
+        write_json("locales/fr/messages.json", {"greeting": "Bonjour"})
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+
+        config = _config(_resources({"paths": ["locales/[source]/messages.json"]}), ["fr"])
+        Runtime(config, db_storage=tmp_path / "store.sqlite").refresh_run_lock()
+        write_json("locales/en/messages.json", {"greeting": "Hi there"})
+
+        plans = Runtime(config, db_storage=tmp_path / "store.sqlite").plan()
+
+        assert plans[0].stale_reason == StaleReason.CONTENT_CHANGED

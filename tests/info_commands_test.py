@@ -14,15 +14,6 @@ def fixed_terminal_width(monkeypatch):
     monkeypatch.setenv("COLUMNS", "80")
 
 
-class TestFormatsCommand:
-    def test_formats_lists_every_resource_type_key(self):
-        result = CliRunner().invoke(cli, ["formats"])
-
-        assert result.exit_code == 0
-        for resource_type in TranslationResourceType:
-            assert re.search(rf"\b{re.escape(resource_type.value)}\b", result.output), resource_type.value
-
-
 class TestLocalesCommand:
     def test_locales_lists_every_supported_code_with_its_name(self):
         result = CliRunner().invoke(cli, ["locales"])

@@ -113,17 +113,76 @@ class TestRunLockStoreIsStale:
         assert store.is_stale("locales/en/messages.json", "fr", "hash-1", "fp-1", existing_destination) is False
 
 
+class TestRunLockStoreReplace:
+    def test_replace_drops_every_previously_recorded_entry(self, store):
+        store.create([_entry(locale="fr"), _entry(locale="de")])
+
+        store.replace([_entry(locale="es")])
+
+        assert store.lookup("locales/en/messages.json", "fr") is None
+        assert store.lookup("locales/en/messages.json", "de") is None
+        assert store.lookup("locales/en/messages.json", "es") is not None
+
+    def test_replace_persists_so_a_new_store_instance_sees_only_the_replacement(self, store, tmp_path):
+        store.create([_entry(locale="fr")])
+        store.replace([_entry(locale="es")])
+
+        reloaded = RunLockStore(tmp_path / "run.lock")
+
+        assert reloaded.lookup("locales/en/messages.json", "fr") is None
+        assert reloaded.lookup("locales/en/messages.json", "es") is not None
+
+    def test_replace_with_no_entries_empties_the_store(self, store, tmp_path):
+        store.create([_entry()])
+
+        store.replace([])
+
+        assert RunLockStore(tmp_path / "run.lock").lookup("locales/en/messages.json", "fr") is None
+
+
+class TestRunLockStoreRemoveOrphans:
+    def test_removes_entries_whose_path_and_locale_are_not_live_and_reports_how_many(self, store):
+        store.create([_entry(locale="fr"), _entry(locale="de"), _entry(path="locales/en/old.json", locale="fr")])
+
+        removed = store.remove_orphans({("locales/en/messages.json", "fr")})
+
+        assert removed == 2
+        assert store.lookup("locales/en/messages.json", "fr") is not None
+        assert store.lookup("locales/en/messages.json", "de") is None
+        assert store.lookup("locales/en/old.json", "fr") is None
+
+    def test_removal_is_persisted(self, store, tmp_path):
+        store.create([_entry(locale="fr"), _entry(locale="de")])
+
+        store.remove_orphans({("locales/en/messages.json", "fr")})
+
+        reloaded = RunLockStore(tmp_path / "run.lock")
+        assert reloaded.lookup("locales/en/messages.json", "de") is None
+        assert reloaded.lookup("locales/en/messages.json", "fr") is not None
+
+    def test_is_a_no_op_that_does_not_touch_the_file_when_nothing_is_orphaned(self, store, tmp_path):
+        store.create([_entry()])
+        before = (tmp_path / "run.lock").stat().st_mtime_ns
+
+        assert store.remove_orphans({("locales/en/messages.json", "fr")}) == 0
+        assert (tmp_path / "run.lock").stat().st_mtime_ns == before
+
+    def test_does_not_create_a_file_for_a_store_that_never_wrote_one(self, store, tmp_path):
+        assert store.remove_orphans(set()) == 0
+        assert not (tmp_path / "run.lock").exists()
+
+
 class TestRunLockStorePrune:
     def test_prune_removes_the_file_and_clears_entries(self, store, tmp_path):
         store.create([_entry()])
 
-        store.prune()
+        assert store.prune() is True
 
         assert not (tmp_path / "run.lock").exists()
         assert store.lookup("locales/en/messages.json", "fr") is None
 
-    def test_prune_is_a_no_op_when_the_file_does_not_exist(self, store):
-        store.prune()
+    def test_prune_reports_false_when_the_file_does_not_exist(self, store):
+        assert store.prune() is False
 
 
 class TestRunLockStoreConcurrency:

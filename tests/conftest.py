@@ -1,3 +1,4 @@
+import json
 from collections.abc import Callable
 
 import pytest
@@ -26,3 +27,17 @@ def make_unit() -> Callable[..., tuple[TranslationUnit, dict]]:
         return unit, written
 
     return _make
+
+
+@pytest.fixture
+def project(tmp_path):
+    source = tmp_path / "locales/en/messages.json"
+    source.parent.mkdir(parents=True)
+    source.write_text(json.dumps({"greeting": "Hello"}), encoding="utf-8")
+    (tmp_path / "babelfishers.toml").write_text(
+        '[locale]\nsource = "en"\ntargets = ["fr", "de"]\n\n'
+        '[engine]\nprovider = "deepl"\n\n'
+        '[resources.json]\npaths = ["locales/[source]/messages.json"]\n',
+        encoding="utf-8",
+    )
+    return tmp_path

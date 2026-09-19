@@ -7,7 +7,6 @@ from babelfishers.cli import ui
 from babelfishers.core.supported_cultures import SUPPORTED_CULTURES
 from babelfishers.models.engine import Engine
 from babelfishers.models.plan import LocalePlan
-from babelfishers.models.translation_resource import TranslationResourceType
 from babelfishers.models.translations import StoreStats
 
 
@@ -90,12 +89,6 @@ def render_dry_run(plans: list[LocalePlan]) -> None:
     ui.row("Engines", chains)
     click.echo()
     click.echo(ui.hint("Unit counts are exact. Characters are an estimate, they assume no retry or fallback. "))
-
-
-def render_formats() -> None:
-    ui.title(f"Supported formats ({len(TranslationResourceType)})")
-    click.echo()
-    ui.grid([(resource_type.value, "") for resource_type in TranslationResourceType])
 
 
 def render_locales(term: str | None = None) -> None:
