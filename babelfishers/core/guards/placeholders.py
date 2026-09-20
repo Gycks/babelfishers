@@ -34,7 +34,8 @@ FORMAT_CATEGORIES: dict[TranslationResourceType, list[re.Pattern[str]]] = {
     TranslationResourceType.JAVA_PROPERTIES: [_PRINTF],
     TranslationResourceType.ANDROID_STRINGS: [_INLINE_XML_TAG_PAIR, _INLINE_XML_SELF_CLOSING_TAG, _PRINTF],
     TranslationResourceType.GETTEXT: [_PRINTF, _PYTHON_PERCENT_NAMED],
-    TranslationResourceType.APPLE_STRINGS: [_PRINTF, _XCSTRINGS_ARG, _STRINGSDICT_SPECIFIER],
+    # The stringsdict reference goes first: `_PRINTF` would otherwise claim its `%#@` prefix and leave the name exposed.
+    TranslationResourceType.APPLE_STRINGS: [_STRINGSDICT_SPECIFIER, _XCSTRINGS_ARG, _PRINTF],
     TranslationResourceType.FLUTTER_ARB: [],
     TranslationResourceType.XLIFF: [_INLINE_XML_TAG_PAIR, _INLINE_XML_SELF_CLOSING_TAG, _PRINTF],
     TranslationResourceType.DOTNET_RESX: [],
