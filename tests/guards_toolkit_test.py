@@ -23,6 +23,22 @@ class TestFindPlaceholdersRegexCategories:
         spans = find_placeholders("You have %(count)d items", T.GETTEXT)
         assert [s.matched_text for s in spans] == ["%(count)d"]
 
+    def test_finds_apple_object_and_long_specifiers_for_apple_resource_type(self):
+        spans = find_placeholders("Hello %@, you have %ld new items", T.APPLE_STRINGS)
+        assert [s.matched_text for s in spans] == ["%@", "%ld"]
+
+    def test_finds_xcstrings_arg_literal_for_apple_resource_type(self):
+        spans = find_placeholders("Total: %arg", T.APPLE_STRINGS)
+        assert [s.matched_text for s in spans] == ["%arg"]
+
+    def test_finds_whole_stringsdict_specifier_for_apple_resource_type(self):
+        spans = find_placeholders("You have %#@count@", T.APPLE_STRINGS)
+        assert [s.matched_text for s in spans] == ["%#@count@"]
+
+    def test_finds_whole_positional_stringsdict_specifier_for_apple_resource_type(self):
+        spans = find_placeholders("You have %1$#@count@", T.APPLE_STRINGS)
+        assert [s.matched_text for s in spans] == ["%1$#@count@"]
+
     def test_html_resource_type_has_no_regex_categories_only_brace_scan(self):
         spans = find_placeholders("Found %d results", T.HTML)
         assert spans == []
@@ -92,6 +108,10 @@ class TestFindPlaceholdersPrecedenceAndOrdering:
         assert len(spans) == 1
         assert spans[0].matched_text == "%{name}"
         assert spans[0].category != "brace_icu"
+
+    def test_stringsdict_specifier_takes_precedence_over_overlapping_printf_match(self):
+        spans = find_placeholders("You have %#@count@ and %d", T.APPLE_STRINGS)
+        assert [s.matched_text for s in spans] == ["%#@count@", "%d"]
 
     def test_matches_sorted_by_start_position_not_discovery_order(self):
         spans = find_placeholders("{first} then %s then {second}", T.JSON)

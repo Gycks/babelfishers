@@ -10,8 +10,23 @@ def _http_error(code: int) -> HTTPError:
 
 
 @pytest.fixture
-def translator() -> LibreTranslateTranslator:
+def translator(monkeypatch) -> LibreTranslateTranslator:
+    monkeypatch.setenv("BF_LIBRETRANSLATE_URL", "http://libretranslate.test")
     return LibreTranslateTranslator()
+
+
+class TestLibreTranslateTranslatorConfiguration:
+    def test_requires_the_server_url(self, monkeypatch):
+        monkeypatch.delenv("BF_LIBRETRANSLATE_URL", raising=False)
+
+        with pytest.raises(KeyError, match="BF_LIBRETRANSLATE_URL"):
+            LibreTranslateTranslator()
+
+    def test_api_key_is_optional(self, monkeypatch):
+        monkeypatch.setenv("BF_LIBRETRANSLATE_URL", "http://libretranslate.test")
+        monkeypatch.delenv("BF_LIBRETRANSLATE_API_KEY", raising=False)
+
+        assert LibreTranslateTranslator() is not None
 
 
 class TestLibreTranslateTranslatorTranslate:
