@@ -36,3 +36,7 @@ class RunResult(BaseModel):
     def paths(self) -> list[Path]:
         """Every changed path, target files first. Empty when the run changed nothing."""
         return [*self.translated, *self.state]
+
+    @property
+    def empty(self) -> bool:
+        return len(self.paths) == 0
