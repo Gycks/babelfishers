@@ -22,12 +22,7 @@ class LibreTranslateTranslator(Translator):
 
     @staticmethod
     def create_client() -> LibreTranslateAPI:
-        url: str | None = None
-        try:
-            url = get_env("BF_LIBRETRANSLATE_URL")
-        except KeyError:
-            pass
-
+        url: str = get_env("BF_LIBRETRANSLATE_URL")
         api_key: str | None = None
         try:
             api_key = get_env("BF_LIBRETRANSLATE_API_KEY")
