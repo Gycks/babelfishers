@@ -8,7 +8,7 @@ class Engine(StrEnum):
     Anthropic = "anthropic"
     OpenAI = "openai"
     Mistral = "mistral"
-    Google = "gemini"
+    Google = "google"
     DeepSeek = "deepseek"
     GoogleTranslate = "google-translate"
     LibreTranslate = "libre-translate"
