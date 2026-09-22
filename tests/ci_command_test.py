@@ -24,7 +24,12 @@ def _ci(*args):
 
 
 class TestCiCommand:
-    @pytest.mark.parametrize("name", ["github", "GitLab", "BITBUCKET"])
+    # TODO: ADD BACK BITBUCKET ONCE SUPPORTED
+    @pytest.mark.parametrize("name",
+                             [
+                                 "github", "GitLab",
+                                 # "BITBUCKET"
+                            ])
     def test_turns_the_platform_argument_into_the_matching_runner_type(self, received, name):
         result = _ci(name)
 

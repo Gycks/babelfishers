@@ -3,7 +3,7 @@ import logging
 import pytest
 
 from babelfishers.core.ci_runners import CIRunnerType
-from babelfishers.core.ci_runners.bitbucket import BitbucketRunner
+# from babelfishers.core.ci_runners.bitbucket import BitbucketRunner
 from babelfishers.core.ci_runners.github import GithubRunner
 from babelfishers.core.ci_runners.gitlab import GitlabRunner
 from babelfishers.core.ci_runners.runner import CIRunnerFactory
@@ -12,7 +12,7 @@ from babelfishers.core.ci_runners.runner import CIRunnerFactory
 RUNNERS = [
     (CIRunnerType.GITHUB, GithubRunner, "GitHub Actions"),
     (CIRunnerType.GITLAB, GitlabRunner, "GitLab CI/CD"),
-    (CIRunnerType.BITBUCKET, BitbucketRunner, "Bitbucket Pipelines"),
+    # (CIRunnerType.BITBUCKET, BitbucketRunner, "Bitbucket Pipelines"),
 ]
 
 
