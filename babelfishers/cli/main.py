@@ -12,6 +12,8 @@ from babelfishers.utils.console_formater import ConsoleFormatter
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 _logger: logging.Logger = logging.getLogger(__name__)
 
+sys.tracebacklimit = 0
+
 
 @click.group()
 @click.version_option(APPLICATION_VERSION)
