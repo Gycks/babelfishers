@@ -5,6 +5,7 @@ description = "Localization on your terms. Translate your app without breaking i
 authors = [
     {name = "Guy Clement Kamdem",email = "gycks.wolf555@slmail.me"}
 ]
+license = "Apache-2.0"
 readme = "README.md"
 requires-python = ">=3.11,<=3.14"
 dependencies = [

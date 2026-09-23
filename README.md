@@ -73,4 +73,4 @@ This project is still young and worked on when time allows. If you find a bug or
 
 ## License
 
-This project does not have a license file yet. Until one is added, all rights are reserved by the author.
+Licensed under the [Apache License, Version 2.0](LICENSE).
