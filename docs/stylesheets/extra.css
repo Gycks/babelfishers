@@ -1,0 +1,92 @@
+/* Brand colours, taken from the logo (docs/assets/logo.svg). */
+
+/* Material only knows named colours; `custom` lets these variables take over. */
+[data-md-color-primary="custom"] {
+  --md-primary-fg-color: #2d5bd6;
+  --md-primary-fg-color--light: #6f8ef0;
+  --md-primary-fg-color--dark: #1f43a8;
+  --md-primary-bg-color: #fff;
+  --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
+}
+
+[data-md-color-accent="custom"] {
+  --md-accent-fg-color: #0b7a5e;
+  --md-accent-fg-color--transparent: rgba(11, 122, 94, 0.1);
+  --md-accent-bg-color: #fff;
+  --md-accent-bg-color--light: rgba(255, 255, 255, 0.7);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-hue: 225;
+  --md-primary-fg-color: #7d9bff;
+  --md-primary-fg-color--light: #a5b8ff;
+  --md-primary-fg-color--dark: #5b7ff0;
+  --md-accent-fg-color: #3ddba9;
+  --md-accent-fg-color--transparent: rgba(61, 219, 169, 0.1);
+  --md-typeset-a-color: #8aa8ff;
+}
+
+/* Neutral header, tab bar and footer: they follow the page background instead of a coloured bar. */
+.md-header,
+.md-tabs,
+.md-footer,
+.md-footer-meta {
+  --md-primary-bg-color: var(--md-default-fg-color);
+  --md-primary-bg-color--light: var(--md-default-fg-color--light);
+  --md-footer-fg-color: var(--md-default-fg-color);
+  --md-footer-fg-color--light: var(--md-default-fg-color--light);
+  --md-footer-fg-color--lighter: var(--md-default-fg-color--lighter);
+  background-color: var(--md-default-bg-color);
+  color: var(--md-default-fg-color);
+}
+
+.md-header {
+  box-shadow: none;
+}
+
+.md-header[data-md-state="shadow"] {
+  box-shadow: 0 1px 0 var(--md-default-fg-color--lightest);
+}
+
+.md-tabs {
+  border-bottom: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.md-footer {
+  border-top: 1px solid var(--md-default-fg-color--lightest);
+}
+
+.md-footer-meta {
+  background-color: var(--md-default-bg-color);
+}
+
+.md-tabs__link--active,
+.md-tabs__link:hover {
+  color: var(--md-primary-fg-color);
+}
+
+/* Search box: a quiet field instead of a translucent bar. */
+.md-search__form,
+.md-search__input {
+  background-color: var(--md-default-fg-color--lightest);
+}
+
+.md-search__form:hover {
+  background-color: var(--md-default-fg-color--lighter);
+}
+
+.md-search__input::placeholder,
+.md-search__input ~ .md-search__icon {
+  color: var(--md-default-fg-color--light);
+}
+
+/* Give the mark some presence in the header. */
+.md-header__button.md-logo {
+  padding: 0.3rem 0.4rem;
+}
+
+.md-header__button.md-logo img,
+.md-header__button.md-logo svg {
+  height: 2rem;
+  width: auto;
+}
