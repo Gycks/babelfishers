@@ -1,7 +1,7 @@
 [project]
 name = "babelfishers"
 version = "0.1.0"
-description = ""
+description = "Localization on your terms. Translate your app without breaking it."
 authors = [
     {name = "Guy Clement Kamdem",email = "gycks.wolf555@slmail.me"}
 ]
