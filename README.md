@@ -1,6 +1,4 @@
-# Babel Fishers
-
-**Localization on your terms.**
+<img src="docs/assets/banner.svg" alt="Babel Fishers. Localization on your terms." width="640">
 
 Translate your app without breaking it.
 
