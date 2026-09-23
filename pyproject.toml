@@ -7,7 +7,7 @@ authors = [
 ]
 license = "Apache-2.0"
 readme = "README.md"
-requires-python = ">=3.11,<=3.14"
+requires-python = ">=3.11,<3.15"
 dependencies = [
     "click (>=8.4.2,<9.0.0)",
     "pydantic (>=2.13.4,<3.0.0)",
@@ -83,7 +83,7 @@ docstring-code-line-length = "dynamic"
 convention = "google"
 
 [tool.mypy]
-python_version = "3.12"
+python_version = "3.11"
 files = ["babelfishers"]
 strict = true
 show_error_codes = true
@@ -96,6 +96,7 @@ disallow_incomplete_defs = true   # reject partially annotated functions
 
 [tool.poe.tasks]
 lint = {sequence = [{cmd = "ruff check babelfishers --fix"}, {cmd = "ruff format babelfishers"}, ]}
+no_fix_lint = {sequence = [{cmd = "ruff check babelfishers"}, {cmd = "ruff format --check babelfishers"}, ]}
 typecheck = {cmd = "mypy"}
 check = ["lint", "typecheck"]
 test = {cmd = "pytest tests/*_test.py"}

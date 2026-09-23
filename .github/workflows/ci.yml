@@ -1,0 +1,51 @@
+name: CI (Code Quality Checks)
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  lint_and_typecheck:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install Dependencies
+        run: poetry install --without dist
+
+      - name: Linting (ruff)
+        run: poetry run poe no_fix_lint
+
+      - name: Type-check (mypy)
+        run: poetry run poe typecheck
+
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-versions: ["3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-versions }}
+
+      - name: Install Poetry
+        run: pip install poetry
+
+      - name: Install Dependencies
+        run: poetry install --without dist
+
+      - name: Run tests
+        run: poetry run poe test
