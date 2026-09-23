@@ -4,6 +4,7 @@ __pycache__/
 
 dist/
 .cache/
+site/
 
 .babelfishers/
 babelfishers.toml
