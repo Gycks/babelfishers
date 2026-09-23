@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 160" role="img" aria-label="Babel Fishers. Localization on your terms.">
+  <style>
+    :root { color-scheme: light dark; }
+    .bf-word { fill: #151b2e; }
+    .bf-tag { fill: #5b6472; }
+    @media (prefers-color-scheme: dark) {
+      .bf-word { fill: #f3f5fb; }
+      .bf-tag { fill: #aab3c5; }
+    }
+  </style>
+
+  <!-- Mark: the B-monogram used across the docs site (docs/assets/logo.svg), unchanged. -->
+  <g transform="translate(32 30) scale(1.5152) translate(-8 -4)">
+    <path d="M10 6 H32.0 A12.0 12.0 0 0 1 32.0 30 H10 Z" fill="#2d5bd6"/>
+    <path d="M10 34 H38.0 A14.0 14.0 0 0 1 38.0 62 H10 Z M10 62 V68 L21 62 Z" fill="#12b28a"/>
+  </g>
+
+  <text x="126" y="78" class="bf-word" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="44" font-weight="700">Babel Fishers</text>
+  <text x="127" y="110" class="bf-tag" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="20" font-weight="500">Localization on your terms.</text>
+</svg>

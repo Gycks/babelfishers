@@ -1,0 +1,42 @@
+import re
+from abc import ABC, abstractmethod
+
+
+class TokenStrategy(ABC):
+    """
+    Controls how a protected text span is embedded into the source text
+    before translation, and how it's resolved after.
+    """
+
+    needs_restore: bool = True
+
+    @property
+    def ignore_tag_names(self) -> list[str]:
+        """
+        Tag names this strategy wraps protected spans in, if any. Empty for
+        strategies that don't use a wrapper tag.
+        """
+        return []
+
+    @property
+    def ignore_tag_shapes(self) -> list[str]:
+        """
+        Human-readable examples of the tag shape(s) this strategy embeds
+        protected spans in, e.g. for use in LLM instructions. Empty for
+        strategies that don't use a wrapper tag.
+        """
+        return []
+
+    @abstractmethod
+    def make_token(self, index: int, namespace: str) -> str:
+        """A short, unique id for this span, scoped to one unit."""
+
+    @abstractmethod
+    def build_span(self, token: str, source_term: str, replacement: str) -> str:
+        """Text spliced into source_text in place of the matched term."""
+
+    def restore_text(self, text: str, token: str, replacement: str) -> str:
+        return text.replace(token, replacement)
+
+    def leftover_pattern(self, token: str) -> re.Pattern[str]:
+        return re.compile(re.escape(token))
