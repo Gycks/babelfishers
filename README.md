@@ -1,4 +1,8 @@
-<img src="docs/assets/banner.svg" alt="Babel Fishers. Localization on your terms." width="640">
+<img src="https://raw.githubusercontent.com/Gycks/babelfishers/main/docs/assets/banner.svg" alt="Babel Fishers. Localization on your terms." width="640">
+
+[![PyPI](https://img.shields.io/pypi/v/babelfishers.svg)](https://pypi.org/project/babelfishers/)
+[![Python versions](https://img.shields.io/pypi/pyversions/babelfishers.svg)](https://pypi.org/project/babelfishers/)
+[![License](https://img.shields.io/pypi/l/babelfishers.svg)](LICENSE)
 
 Translate your app without breaking it.
 
