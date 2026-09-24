@@ -19,6 +19,9 @@ class Translator(ABC):
         """
         Translate the given translation units.
 
+        Sets `translated_text` on each unit. The translation pipeline restores protected
+        spans, checks the result and writes it back, so a translator never calls `write_back`.
+
         Args:
             data: Translation units to translate.
             source: The source language.

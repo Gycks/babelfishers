@@ -63,6 +63,5 @@ class LibreTranslateTranslator(Translator):
                     raise
 
             unit.translated_text = translated_text
-            unit.write_back(translated_text)
 
         return data
