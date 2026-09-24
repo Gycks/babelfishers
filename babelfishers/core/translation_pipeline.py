@@ -39,7 +39,15 @@ class TranslationPipeline:
         if store is None:
             return [(unit, None) for unit in units]
 
-        return [(unit, store.lookup(unit.source_text, source, target)) for unit in units]
+        lookups = []
+        for unit in units:
+            cached = store.lookup(unit.source_text, source, target)
+            # An entry with broken placeholders (stored by an older version) is translated again.
+            if cached is not None and not self._placeholders_match(unit.source_text, cached, unit.unit_type):
+                cached = None
+            lookups.append((unit, cached))
+
+        return lookups
 
     def _cache_split_translation_units(
         self, units: list[TranslationUnit], source: str, target: str
@@ -128,19 +136,35 @@ class TranslationPipeline:
         units: list[TranslationUnit],
         source_locale: str,
         target_locale: str,
-    ) -> tuple[Engine, list[TranslationUnit]]:
+    ) -> dict[int, tuple[Engine, TranslationUnit]]:
+        """
+        Translate the units, retrying and switching engine on errors and on units whose
+        placeholders did not come back intact.
+
+        Returns:
+            The translated copies with the engine that produced them, keyed by their position
+            in `units`. Units whose placeholders never came back intact, or that the last engine
+            failed on after others were translated, are left out.
+
+        Raises:
+            ValueError: When the last engine failed and no unit was translated.
+        """
+        results: dict[int, tuple[Engine, TranslationUnit]] = {}
+        rejected: dict[int, str] = {}
+        pending = list(range(len(units)))
+        last_attempt_failed = False
 
         for engine in self._translation_engines:
             translator = TranslatorFactory.create(engine)
 
             self._logger.info(ConsoleFormatter.info(f"Using translation engine: {translator.engine}"))
 
-            placeholder_guard = PlaceholderGuard(engine)
-            protected_units = placeholder_guard.protect(units)
-
             retries = 2
             retries_counter = 0
             for _ in range(retries):
+                placeholder_guard = PlaceholderGuard(engine)
+                protected_units = placeholder_guard.protect([units[i] for i in pending])
+
                 try:
                     dataset = protected_units
                     glossary_guard: GlossaryGuard | None = None
@@ -165,9 +189,30 @@ class TranslationPipeline:
                     if not placeholder_guard.restore(translations):
                         raise ValueError("Unable to restore translation units.")
 
-                    return translator.engine, translations
+                    last_attempt_failed = False
+                    mismatched = []
+                    for i, translation in zip(pending, translations, strict=True):
+                        if translation.skip_translation or self._placeholders_match(
+                            units[i].source_text, translation.translated_text, units[i].unit_type
+                        ):
+                            results[i] = (translator.engine, translation)
+                        else:
+                            mismatched.append(i)
+                            rejected[i] = translation.translated_text
+
+                    pending = mismatched
+                    if not pending:
+                        return results
+
+                    if retries_counter < retries - 1:
+                        self._logger.warning(
+                            ConsoleFormatter.warning(
+                                f"{len(pending)} unit(s) came back with changed placeholders. Retrying..."
+                            )
+                        )
 
                 except Exception as exe:
+                    last_attempt_failed = True
                     if retries_counter < retries - 1:
                         self._logger.warning(
                             ConsoleFormatter.error("An error occurred during translation. Retrying..."), exc_info=exe
@@ -176,27 +221,45 @@ class TranslationPipeline:
                 finally:
                     retries_counter += 1
 
-            self._logger.warning(
-                ConsoleFormatter.warning("An error occurred during translation. Switching engine (if any)")
+            reason = (
+                "An error occurred during translation"
+                if last_attempt_failed
+                else f"{len(pending)} unit(s) still came back with changed placeholders"
             )
+            self._logger.warning(ConsoleFormatter.warning(f"{reason}. Switching engine (if any)"))
 
-        raise ValueError("The translation pipeline failed.")
+        # Nothing to keep: the provider itself is failing (wrong key, quota, network).
+        if last_attempt_failed and not results:
+            raise ValueError("The translation pipeline failed.")
 
-    def _warn_on_placeholder_mismatch(self, units: list[TranslationUnit]) -> None:
-        for unit in units:
-            if unit.skip_translation:
-                continue
-
-            source_tokens = {p.matched_text for p in find_placeholders(unit.source_text, unit.unit_type)}
-            translated_tokens = {p.matched_text for p in find_placeholders(unit.translated_text, unit.unit_type)}
-
-            if source_tokens != translated_tokens:
+        for i in pending:
+            if last_attempt_failed:
                 self._logger.warning(
                     ConsoleFormatter.warning(
-                        f"Placeholder mismatch for unit '{unit.key}': "
-                        f"expected {sorted(source_tokens)}, got {sorted(translated_tokens)}"
+                        f"Translation failed for unit '{units[i].key}' on every engine. Left untranslated."
                     )
                 )
+            else:
+                self._warn_left_untranslated(units[i], rejected[i])
+
+        return results
+
+    @staticmethod
+    def _placeholders(text: str, unit_type: TranslationResourceType) -> list[str]:
+        return sorted(p.matched_text for p in find_placeholders(text, unit_type))
+
+    @classmethod
+    def _placeholders_match(cls, source_text: str, translated_text: str, unit_type: TranslationResourceType) -> bool:
+        return cls._placeholders(source_text, unit_type) == cls._placeholders(translated_text, unit_type)
+
+    def _warn_left_untranslated(self, unit: TranslationUnit, translated_text: str) -> None:
+        self._logger.warning(
+            ConsoleFormatter.warning(
+                f"Placeholder mismatch for unit '{unit.key}': "
+                f"expected {self._placeholders(unit.source_text, unit.unit_type)}, "
+                f"got {self._placeholders(translated_text, unit.unit_type)}. Left untranslated."
+            )
+        )
 
     @staticmethod
     def _group_plural_units(
@@ -229,24 +292,33 @@ class TranslationPipeline:
                     )
                 )
 
-    def run(self, parse_result: ParseResult, source_locale: str, target_locale: str, destination_path: Path) -> None:
+    def run(self, parse_result: ParseResult, source_locale: str, target_locale: str, destination_path: Path) -> int:
+        """
+        Translate, write the target file and save the new translations in the memory.
+
+        Returns:
+            How many units were left untranslated. They keep the source file's value.
+        """
         self._warn_on_missing_plural_categories(parse_result.units, target_locale)
         cache_hits, cache_misses = self._cache_split_translation_units(parse_result.units, source_locale, target_locale)
-        engine_used, translated_copies = self._run_translate(cache_misses, source_locale, target_locale)
+        translated_copies = self._run_translate(cache_misses, source_locale, target_locale)
 
-        for original_unit, translated_copy in zip(cache_misses, translated_copies, strict=True):
-            original_unit.translated_text = translated_copy.translated_text
+        translated_by_engine: dict[Engine, list[TranslationUnit]] = {}
+        for i, (engine, translated_copy) in sorted(translated_copies.items()):
+            cache_misses[i].translated_text = translated_copy.translated_text
+            translated_by_engine.setdefault(engine, []).append(cache_misses[i])
 
-        all_original_units = cache_hits + cache_misses
-        self._warn_on_placeholder_mismatch(all_original_units)
-
-        for unit in all_original_units:
+        # Units left out by `_run_translate` keep the source file's value.
+        for unit in cache_hits + [cache_misses[i] for i in sorted(translated_copies)]:
             unit.write_back(unit.translated_text)
 
         parse_result.save(destination_path)
 
         if self._translation_store is not None:
-            query_data = [
-                (unit.source_text, source_locale, target_locale, unit.translated_text) for unit in cache_misses
-            ]
-            self._translation_store.store_batch(query_data, engine_used)
+            for engine, translated_units in translated_by_engine.items():
+                query_data = [
+                    (unit.source_text, source_locale, target_locale, unit.translated_text) for unit in translated_units
+                ]
+                self._translation_store.store_batch(query_data, engine)
+
+        return len(cache_misses) - len(translated_copies)
