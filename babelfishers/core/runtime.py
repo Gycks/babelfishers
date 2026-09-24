@@ -225,7 +225,7 @@ class Runtime:
                 )
 
                 for plan in stale_plans:
-                    stale_jobs.append(_StaleJob(plan, pipeline, parser.clone(parse_result), content_hash))
+                    stale_jobs.append(_StaleJob(plan, pipeline, parser.clone(parse_result, plan.locale), content_hash))
 
         return plans, stale_jobs
 

@@ -2,8 +2,12 @@ import logging
 import re
 from collections.abc import Callable
 from copy import deepcopy
+from gettext import c2py
 from pathlib import Path
 from typing import Any
+
+from babel import UnknownLocaleError
+from babel.messages.plurals import get_plural
 
 from babelfishers.core.parsers.parser import Parser
 from babelfishers.core.parsers.registry import register
@@ -119,11 +123,72 @@ class GettextParser(Parser):
         return f"{entry['msgctxt']}\x04{entry['msgid']}" if entry["msgctxt"] else entry["msgid"]
 
     @staticmethod
-    def _newline_of(document: list[dict[str, Any]]) -> str:
+    def _meta_of(document: list[dict[str, Any]]) -> dict[str, Any]:
         for entry in document:
             if "__meta__" in entry:
-                return str(entry["newline"])
-        return "\n"
+                return entry
+        return {"__meta__": True, "newline": "\n", "excluded_keys": []}
+
+    @staticmethod
+    def _header_of(document: list[dict[str, Any]]) -> dict[str, Any] | None:
+        for entry in document:
+            if "__meta__" not in entry and entry["msgid"] == "" and entry["msgctxt"] is None:
+                return entry
+        return None
+
+    @staticmethod
+    def _set_header_fields(header: str, fields: dict[str, str]) -> str:
+        """Replace the named `Name: value` header lines, appending any the header lacks."""
+        pending = {name.lower(): (name, value) for name, value in fields.items()}
+        lines = []
+        for line in header.splitlines():
+            name, value = pending.pop(line.split(":", 1)[0].strip().lower(), (None, None))
+            lines.append(line if name is None else f"{name}: {value}")
+        lines.extend(f"{name}: {value}" for name, value in pending.values())
+        return "".join(f"{line}\n" for line in lines)
+
+    def _localize(self, document: list[dict[str, Any]], target_locale: str) -> int | None:
+        """
+        Point the header at `target_locale` and give every plural entry the target's
+        number of `msgstr[n]` slots, using the gettext plural rules `pybabel init` writes.
+
+        Returns the slot the target uses for n == 1, which takes the `msgid` text; the
+        other slots take `msgid_plural`. None when the target has a single form for
+        every count, in which case that form takes `msgid_plural`.
+        """
+        language = target_locale.replace("-", "_")
+        fields = {"Language": language}
+        singular_slot: int | None = 0
+
+        try:
+            plural = get_plural(language)
+        except (UnknownLocaleError, ValueError):
+            self._logger.warning(
+                ConsoleFormatter.warning(
+                    f"No gettext plural rule known for '{target_locale}', keeping the source Plural-Forms"
+                )
+            )
+        else:
+            fields["Plural-Forms"] = str(plural)
+            singular_slot = c2py(plural.plural_expr)(1) if plural.num_plurals > 1 else None
+            for entry in document:
+                if "__meta__" not in entry and entry["msgid_plural"] is not None:
+                    entry["msgstr_plural"] = {i: entry["msgstr_plural"].get(i, "") for i in range(plural.num_plurals)}
+
+        header = self._header_of(document)
+        if header is None:
+            header = {
+                "comments": [],
+                "msgctxt": None,
+                "msgid": "",
+                "msgid_plural": None,
+                "msgstr": "Content-Type: text/plain; charset=UTF-8\n",
+                "msgstr_plural": {},
+            }
+            document.insert(0, header)
+        header["msgstr"] = self._set_header_fields(header["msgstr"] or "", fields)
+
+        return singular_slot
 
     def _index_entries(self, document: list[dict[str, Any]]) -> dict[str, tuple[dict[str, Any], int | None]]:
         index: dict[str, tuple[dict[str, Any], int | None]] = {}
@@ -207,7 +272,7 @@ class GettextParser(Parser):
 
     def _make_save(self, document: list[dict[str, Any]]) -> Callable[[Path], None]:
         def save(destination: Path) -> None:
-            newline = self._newline_of(document)
+            newline = self._meta_of(document)["newline"]
             blocks: list[str] = []
             for entry in document:
                 if "__meta__" in entry:
@@ -232,22 +297,11 @@ class GettextParser(Parser):
 
         return save
 
-    def parse(self, source_path: Path, excluded_keys: list[str]) -> ParseResult:
-        self._logger.info(ConsoleFormatter.info(f"Parsing source {source_path}"))
-
-        if source_path.suffix.lower() != self._ALLOWED_EXTENSION:
-            raise ValueError(f"Invalid file extension for {source_path}. Expected {self._ALLOWED_EXTENSION}")
-
-        with source_path.open(encoding="utf-8", newline="") as handle:
-            raw_text = handle.read()
-        newline = detect_newline(raw_text)
-
-        document = self._parse_entries(raw_text)
-        entries_index = self._index_entries(document)
-        excluded = set(excluded_keys)
+    def _build_units(self, document: list[dict[str, Any]], singular_slot: int | None) -> list[TranslationUnit]:
+        excluded = set(self._meta_of(document)["excluded_keys"])
 
         units: list[TranslationUnit] = []
-        for key, (entry, plural_index) in entries_index.items():
+        for key, (entry, plural_index) in self._index_entries(document).items():
             if key in excluded:
                 continue
 
@@ -264,7 +318,9 @@ class GettextParser(Parser):
                     )
                 )
             else:
-                source_text = entry["msgid"] if plural_index == 0 else (entry["msgid_plural"] or entry["msgid"])
+                source_text = (
+                    entry["msgid"] if plural_index == singular_slot else (entry["msgid_plural"] or entry["msgid"])
+                )
                 if not source_text.strip():
                     continue
                 units.append(
@@ -277,28 +333,32 @@ class GettextParser(Parser):
                     )
                 )
 
-        document.append({"__meta__": True, "newline": newline})
+        return units
+
+    def parse(self, source_path: Path, excluded_keys: list[str]) -> ParseResult:
+        self._logger.info(ConsoleFormatter.info(f"Parsing source {source_path}"))
+
+        if source_path.suffix.lower() != self._ALLOWED_EXTENSION:
+            raise ValueError(f"Invalid file extension for {source_path}. Expected {self._ALLOWED_EXTENSION}")
+
+        with source_path.open(encoding="utf-8", newline="") as handle:
+            raw_text = handle.read()
+        newline = detect_newline(raw_text)
+
+        document = self._parse_entries(raw_text)
+        document.append({"__meta__": True, "newline": newline, "excluded_keys": list(excluded_keys)})
+        units = self._build_units(document, singular_slot=0)
 
         self._logger.info(ConsoleFormatter.success(f"Successfully parsed source {source_path}"))
         return ParseResult(source_path=source_path, units=units, save=self._make_save(document), document=document)
 
-    def clone(self, data: ParseResult) -> ParseResult:
+    def clone(self, data: ParseResult, target_locale: str | None = None) -> ParseResult:
         cloned_document: list[dict[str, Any]] = deepcopy(data.document)
-        entries_index = self._index_entries(cloned_document)
-
-        cloned_units = []
-        for unit in data.units:
-            entry, plural_index = entries_index[unit.key]
-            write_back = (
-                self._make_write_back_singular(entry)
-                if plural_index is None
-                else self._make_write_back_plural(entry, plural_index)
-            )
-            cloned_units.append(unit.model_copy(update={"write_back": write_back}))
+        singular_slot = 0 if target_locale is None else self._localize(cloned_document, target_locale)
 
         return ParseResult(
             source_path=data.source_path,
-            units=cloned_units,
+            units=self._build_units(cloned_document, singular_slot),
             document=cloned_document,
             save=self._make_save(cloned_document),
         )

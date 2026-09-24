@@ -140,7 +140,7 @@ class FlutterArbParser(Parser):
                 else:
                     self._walk(item, full_key, units, excluded_keys)
 
-    def clone(self, data: ParseResult) -> ParseResult:
+    def clone(self, data: ParseResult, target_locale: str | None = None) -> ParseResult:
         cloned_document = deepcopy(data.document)
 
         rebuilt_units: list[TranslationUnit] = []

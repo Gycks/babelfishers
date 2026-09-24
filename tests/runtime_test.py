@@ -69,6 +69,12 @@ def _default_transform(unit, target):
     return f"[{target}] {unit.source_text}"
 
 
+_PLURAL_PO = (
+    'msgid ""\nmsgstr ""\n"Language: en\\n"\n"Plural-Forms: nplurals=2; plural=(n != 1);\\n"\n\n'
+    'msgid "%d file"\nmsgid_plural "%d files"\nmsgstr[0] ""\nmsgstr[1] ""\n'
+)
+
+
 class TestRuntimeOrchestration:
     def test_orchestrate_translates_a_single_resource_to_all_target_locales(self, write_json, tmp_path, monkeypatch):
         write_json("locales/en/messages.json", {"greeting": "Hello"})
@@ -175,6 +181,24 @@ class TestRuntimeOrchestration:
         for locale in locales:
             content = json.loads((tmp_path / f"locales/{locale}/messages.json").read_text())
             assert content == {"greeting": f"[{locale}] Hello", "farewell": f"[{locale}] Bye"}
+
+    def test_orchestrate_writes_the_target_language_and_plural_forms_into_each_gettext_file(
+        self, tmp_path, monkeypatch
+    ):
+        (tmp_path / "locale/en").mkdir(parents=True)
+        (tmp_path / "locale/en/messages.po").write_text(_PLURAL_PO, encoding="utf-8")
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+
+        resources = TranslationResource.load("en", "po", {"paths": ["locale/[source]/messages.po"]})
+        config = _config(resources, ["fr", "pl"])
+        Runtime(config, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        fr = (tmp_path / "locale/fr/messages.po").read_text(encoding="utf-8")
+        pl = (tmp_path / "locale/pl/messages.po").read_text(encoding="utf-8")
+        assert "Language: fr" in fr and "nplurals=2; plural=(n > 1);" in fr
+        assert 'msgstr[1] "[fr] %d files"' in fr and "msgstr[2]" not in fr
+        assert "Language: pl" in pl and "nplurals=3;" in pl
+        assert 'msgstr[2] "[pl] %d files"' in pl
 
 
 class TestRuntimeOrchestrationResult:
@@ -424,6 +448,16 @@ class TestRuntimePlan:
         assert plans[0].stale_reason == StaleReason.CONTENT_CHANGED
         assert (plans[0].volume.cached_units, plans[0].volume.units_to_translate) == (1, 0)
         assert run_lock.read_bytes() == run_lock_before
+
+    def test_plan_counts_the_target_locales_gettext_plural_forms(self, tmp_path, monkeypatch):
+        (tmp_path / "locale/en").mkdir(parents=True)
+        (tmp_path / "locale/en/messages.po").write_text(_PLURAL_PO, encoding="utf-8")
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+
+        resources = TranslationResource.load("en", "po", {"paths": ["locale/[source]/messages.po"]})
+        plans = Runtime(_config(resources, ["fr", "pl", "ja"]), db_storage=tmp_path / "store.sqlite").plan()
+
+        assert {plan.locale: plan.volume.units_to_translate for plan in plans} == {"fr": 2, "pl": 3, "ja": 1}
 
 
 class TestRuntimeRefreshRunLock:

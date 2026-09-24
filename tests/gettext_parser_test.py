@@ -168,3 +168,78 @@ class TestGettextParserClone:
         cloned.save(destination)
 
         assert 'msgstr "Bonjour"' in destination.read_text(encoding="utf-8")
+
+    def test_clone_for_target_locale_rewrites_language_and_plural_forms_in_the_header(self, parser, write_po):
+        source = write_po(
+            'msgid ""\nmsgstr ""\n"Project-Id-Version: demo\\n"\n"Language: en\\n"\n'
+            '"Plural-Forms: nplurals=2; plural=(n != 1);\\n"\n\nmsgid "Hello"\nmsgstr ""\n'
+        )
+        cloned = parser.clone(parser.parse(source, []), "pl")
+
+        assert cloned.document[0]["msgstr"] == (
+            "Project-Id-Version: demo\n"
+            "Language: pl\n"
+            "Plural-Forms: nplurals=3; plural=(n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
+        )
+
+    def test_clone_for_target_locale_adds_a_header_when_the_source_has_none(self, parser, write_po):
+        source = write_po('msgid "Hello"\nmsgstr ""\n')
+        cloned = parser.clone(parser.parse(source, []), "fr")
+
+        assert cloned.document[0]["msgid"] == ""
+        assert cloned.document[0]["msgstr"] == (
+            "Content-Type: text/plain; charset=UTF-8\nLanguage: fr\nPlural-Forms: nplurals=2; plural=(n > 1);\n"
+        )
+        assert [u.key for u in cloned.units] == ["Hello"]
+
+    @pytest.mark.parametrize(
+        ("locale", "expected_sources"),
+        [
+            ("fr", ["one item", "%d items"]),
+            ("pl", ["one item", "%d items", "%d items"]),
+            ("ar", ["%d items", "one item", "%d items", "%d items", "%d items", "%d items"]),
+            ("ja", ["%d items"]),
+        ],
+    )
+    def test_clone_for_target_locale_emits_one_plural_unit_per_target_form(
+        self, parser, write_po, locale, expected_sources
+    ):
+        source = write_po('msgid "one item"\nmsgid_plural "%d items"\nmsgstr[0] ""\nmsgstr[1] ""\n')
+        cloned = parser.clone(parser.parse(source, []), locale)
+
+        assert [u.key for u in cloned.units] == [f"one item[{i}]" for i in range(len(expected_sources))]
+        assert [u.source_text for u in cloned.units] == expected_sources
+
+    def test_clone_for_target_locale_saves_every_target_plural_slot(self, parser, write_po, tmp_path):
+        source = write_po('msgid "one item"\nmsgid_plural "%d items"\nmsgstr[0] ""\nmsgstr[1] ""\n')
+        cloned = parser.clone(parser.parse(source, []), "ru")
+
+        for unit in cloned.units:
+            unit.write_back(f"form {unit.key[-2]}")
+
+        destination = tmp_path / "out.po"
+        cloned.save(destination)
+
+        text = destination.read_text(encoding="utf-8")
+        assert 'msgstr[0] "form 0"\nmsgstr[1] "form 1"\nmsgstr[2] "form 2"\n' in text
+        assert "msgstr[3]" not in text
+
+    def test_clone_for_target_locale_keeps_excluded_plural_slots_out_of_the_units(self, parser, write_po):
+        source = write_po('msgid "one item"\nmsgid_plural "%d items"\nmsgstr[0] ""\nmsgstr[1] "kept"\n')
+        cloned = parser.clone(parser.parse(source, ["one item[1]"]), "pl")
+
+        assert [u.key for u in cloned.units] == ["one item[0]", "one item[2]"]
+        assert cloned.document[1]["msgstr_plural"] == {0: "", 1: "kept", 2: ""}
+
+    def test_clone_for_unknown_locale_sets_language_and_keeps_source_plural_forms(self, parser, write_po, caplog):
+        source = write_po(
+            'msgid ""\nmsgstr ""\n"Language: en\\n"\n"Plural-Forms: nplurals=2; plural=(n != 1);\\n"\n\n'
+            'msgid "one item"\nmsgid_plural "%d items"\nmsgstr[0] ""\nmsgstr[1] ""\n'
+        )
+
+        with caplog.at_level(logging.WARNING):
+            cloned = parser.clone(parser.parse(source, []), "xx")
+
+        assert any("No gettext plural rule known for 'xx'" in r.message for r in caplog.records)
+        assert cloned.document[0]["msgstr"] == "Language: xx\nPlural-Forms: nplurals=2; plural=(n != 1);\n"
+        assert [u.key for u in cloned.units] == ["one item[0]", "one item[1]"]
