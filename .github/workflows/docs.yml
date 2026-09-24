@@ -1,13 +1,7 @@
 name: Documentation
 
 on:
-  push:
-    branches:
-      - main
-    paths:
-      - "docs/**"
-      - "mkdocs.yml"
-      - "CHANGELOG.md"
+  workflow_call:
   workflow_dispatch:
 
 jobs:

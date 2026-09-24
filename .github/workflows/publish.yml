@@ -74,6 +74,13 @@ jobs:
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
+  docs:
+    needs: publish
+    permissions:
+      pages: write
+      id-token: write
+    uses: ./.github/workflows/docs.yml
+
   release:
     needs: [prepare, publish]
     runs-on: ubuntu-latest
