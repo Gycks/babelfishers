@@ -101,6 +101,20 @@ class RunLockStore:
             self._logger.info(ConsoleFormatter.info(f"Saving run lock file: {self._destination}"))
             self._save()
 
+    def discard(self, keys: Collection[tuple[str, str]]) -> None:
+        """Drop the entries for these (path, locale) pairs, so the next run treats them as stale."""
+        with self._write_lock:
+            removed = 0
+            for path, locale in keys:
+                locales = self._entries.get(path, {})
+                if locales.pop(locale, None) is not None:
+                    removed += 1
+                if not locales:
+                    self._entries.pop(path, None)
+
+            if removed:
+                self._save()
+
     def remove_orphans(self, live: Collection[tuple[str, str]]) -> int:
         """Drop every entry whose (path, locale) is not in collection. Returns how many were dropped."""
         with self._write_lock:
