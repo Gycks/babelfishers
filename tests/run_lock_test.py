@@ -172,6 +172,22 @@ class TestRunLockStoreRemoveOrphans:
         assert not (tmp_path / "run.lock").exists()
 
 
+class TestRunLockStoreDiscard:
+    def test_drops_only_the_given_entries_and_persists(self, store, tmp_path):
+        store.create([_entry(locale="fr"), _entry(locale="de")])
+
+        store.discard([("locales/en/messages.json", "fr"), ("locales/en/unknown.json", "fr")])
+
+        reloaded = RunLockStore(tmp_path / "run.lock")
+        assert reloaded.lookup("locales/en/messages.json", "fr") is None
+        assert reloaded.lookup("locales/en/messages.json", "de") is not None
+
+    def test_does_not_create_a_file_when_nothing_was_recorded(self, store, tmp_path):
+        store.discard([("locales/en/messages.json", "fr")])
+
+        assert not (tmp_path / "run.lock").exists()
+
+
 class TestRunLockStorePrune:
     def test_prune_removes_the_file_and_clears_entries(self, store, tmp_path):
         store.create([_entry()])

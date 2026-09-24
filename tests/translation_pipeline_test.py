@@ -81,6 +81,21 @@ def _flaky_translator(engine: Engine, fail_times: int, call_log: list | None = N
     return _Translator
 
 
+def _drops_placeholder_translator(engine: Engine, call_log: list | None = None):
+    class _Translator(Translator):
+        def __init__(self) -> None:
+            super().__init__(engine)
+
+        def translate(self, data, source, target):
+            if call_log is not None:
+                call_log.append((engine, len(data)))
+            for unit in data:
+                unit.translated_text = "Bonjour"
+            return data
+
+    return _Translator
+
+
 def _mangled_then_clean_translator(engine: Engine):
     class _Translator(Translator):
         def __init__(self) -> None:
@@ -236,6 +251,24 @@ class TestTranslationPipelineEngineRetryAndSwitch:
         with pytest.raises(ValueError, match="translation pipeline failed"):
             pipeline.run(parse_result, "en", "fr", Path("/tmp/out.json"))
 
+    def test_keeps_translated_units_when_the_last_engine_fails_on_the_rest(self, tm_store, monkeypatch, caplog):
+        _register(monkeypatch, Engine.DeepL, _drops_placeholder_translator(Engine.DeepL))
+        _register(monkeypatch, Engine.GoogleTranslate, _always_fail_translator(Engine.GoogleTranslate))
+
+        written = {}
+        pipeline = TranslationPipeline(
+            [Engine.DeepL, Engine.GoogleTranslate], glossary=None, translation_store=tm_store
+        )
+        parse_result = _parse_result([_unit("k1", "Hello %s", written), _unit("k2", "Bye", written)])
+
+        with caplog.at_level(logging.WARNING):
+            left_untranslated = pipeline.run(parse_result, "en", "fr", Path("/tmp/out.json"))
+
+        assert left_untranslated == 1
+        assert written == {"k2": "Bonjour"}
+        assert tm_store.lookup("Hello %s", "en", "fr") is None
+        assert any("'k1' on every engine. Left untranslated" in r.message for r in caplog.records)
+
     def test_retry_triggers_when_placeholder_restoration_fails_due_to_a_mangled_tag(self, tm_store, monkeypatch):
         _register(monkeypatch, Engine.DeepL, _mangled_then_clean_translator(Engine.DeepL))
 
@@ -248,28 +281,70 @@ class TestTranslationPipelineEngineRetryAndSwitch:
 
 
 class TestTranslationPipelinePlaceholderConsistency:
-    def test_run_logs_a_warning_when_a_placeholder_is_missing_from_the_translation(
+    def test_run_retries_then_leaves_out_a_unit_whose_placeholder_never_comes_back(
         self, tm_store, monkeypatch, caplog
     ):
-        class _DropsPlaceholderTranslator(Translator):
+        call_log = []
+        _register(monkeypatch, Engine.DeepL, _drops_placeholder_translator(Engine.DeepL, call_log))
+
+        written = {}
+        pipeline = TranslationPipeline([Engine.DeepL], glossary=None, translation_store=tm_store)
+        parse_result = _parse_result([_unit("k1", "Hello %s", written), _unit("k2", "Bye", written)])
+
+        with caplog.at_level(logging.WARNING):
+            pipeline.run(parse_result, "en", "fr", Path("/tmp/out.json"))
+
+        assert call_log == [(Engine.DeepL, 2), (Engine.DeepL, 1)]
+        assert written == {"k2": "Bonjour"}
+        assert tm_store.lookup("Hello %s", "en", "fr") is None
+        assert tm_store.lookup("Bye", "en", "fr") == "Bonjour"
+        assert any("Placeholder mismatch" in r.message and "Left untranslated" in r.message for r in caplog.records)
+        assert any("1 unit(s) still came back with changed placeholders" in r.message for r in caplog.records)
+        assert not any("An error occurred" in r.message for r in caplog.records)
+
+    def test_run_sends_a_unit_whose_placeholder_never_comes_back_to_the_next_engine(self, tm_store, monkeypatch):
+        _register(monkeypatch, Engine.DeepL, _drops_placeholder_translator(Engine.DeepL))
+        _register(monkeypatch, Engine.OpenAI, _echo_translator(Engine.OpenAI))
+
+        written = {}
+        pipeline = TranslationPipeline([Engine.DeepL, Engine.OpenAI], glossary=None, translation_store=tm_store)
+        parse_result = _parse_result([_unit("k1", "Hello %s", written)])
+        pipeline.run(parse_result, "en", "fr", Path("/tmp/out.json"))
+
+        assert written == {"k1": "Hello %s"}
+        assert tm_store.stats().by_engine == {"openai": 1}
+
+    def test_run_translates_again_a_cached_entry_with_broken_placeholders(self, tm_store, monkeypatch):
+        tm_store.store("Hello %s", "en", "fr", "Bonjour", "libre-translate")
+        call_log = []
+        _register(monkeypatch, Engine.DeepL, _echo_translator(Engine.DeepL, call_log))
+
+        written = {}
+        pipeline = TranslationPipeline([Engine.DeepL], glossary=None, translation_store=tm_store)
+        parse_result = _parse_result([_unit("k1", "Hello %s", written)])
+        pipeline.run(parse_result, "en", "fr", Path("/tmp/out.json"))
+
+        assert call_log == [(Engine.DeepL, 1)]
+        assert written == {"k1": "Hello %s"}
+        assert tm_store.lookup("Hello %s", "en", "fr") == "Hello %s"
+
+    def test_run_leaves_out_a_unit_that_lost_one_of_two_identical_placeholders(self, tm_store, monkeypatch):
+        class _DropsSecondPlaceholderTranslator(Translator):
             def __init__(self) -> None:
                 super().__init__(Engine.DeepL)
 
             def translate(self, data, source, target):
                 for unit in data:
-                    unit.translated_text = "Bonjour"
+                    unit.translated_text = unit.source_text.split(" and ")[0]
                 return data
 
-        _register(monkeypatch, Engine.DeepL, _DropsPlaceholderTranslator)
+        _register(monkeypatch, Engine.DeepL, _DropsSecondPlaceholderTranslator)
 
         written = {}
         pipeline = TranslationPipeline([Engine.DeepL], glossary=None, translation_store=tm_store)
-        parse_result = _parse_result([_unit("k1", "Hello %s", written)])
+        pipeline.run(_parse_result([_unit("k1", "%s and %s", written)]), "en", "fr", Path("/tmp/out.json"))
 
-        with caplog.at_level(logging.WARNING):
-            pipeline.run(parse_result, "en", "fr", Path("/tmp/out.json"))
-
-        assert any("Placeholder mismatch" in r.message for r in caplog.records)
+        assert written == {}
 
     def test_run_does_not_warn_when_placeholders_are_preserved(self, tm_store, monkeypatch, caplog):
         _register(monkeypatch, Engine.DeepL, _echo_translator(Engine.DeepL))

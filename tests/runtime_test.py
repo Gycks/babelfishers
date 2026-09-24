@@ -252,6 +252,38 @@ class TestRuntimeRunLockSkipping:
         assert call_log == [(Engine.DeepL, "fr")]
         assert json.loads((tmp_path / "locales/fr/messages.json").read_text()) == {"greeting": "[fr] Hello"}
 
+    def test_next_run_retries_only_the_units_left_untranslated(self, write_json, tmp_path, monkeypatch):
+        write_json("locales/en/messages.json", {"greeting": "Hello {name}", "farewell": "Bye"})
+        call_log = []
+        first_run = [True]
+
+        def transform(unit, target):
+            if first_run[0] and unit.key == "greeting":
+                return "Bonjour"
+            return _default_transform(unit, target)
+
+        _register(monkeypatch, Engine.DeepL, transform=transform, call_log=call_log)
+        resources = _resources({"paths": ["locales/[source]/messages.json"]})
+        Runtime(_config(resources, ["fr"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert json.loads((tmp_path / "locales/fr/messages.json").read_text()) == {
+            "greeting": "Hello {name}",
+            "farewell": "[fr] Bye",
+        }
+
+        first_run[0] = False
+        sent = []
+        _register(monkeypatch, Engine.DeepL, transform=lambda unit, target: sent.append(unit.key) or _default_transform(unit, target))
+        resources2 = _resources({"paths": ["locales/[source]/messages.json"]})
+        Runtime(_config(resources2, ["fr"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert sent == ["greeting"]
+        assert json.loads((tmp_path / "locales/fr/messages.json").read_text()) == {
+            "greeting": "[fr] Hello {name}",
+            "farewell": "[fr] Bye",
+        }
+        assert RunLockStore().lookup("locales/en/messages.json", "fr") is not None
+
     def test_retranslates_every_locale_when_the_source_file_content_changes(self, write_json, tmp_path, monkeypatch):
         write_json("locales/en/messages.json", {"greeting": "Hello"})
         call_log = []

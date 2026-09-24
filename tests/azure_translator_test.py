@@ -24,14 +24,14 @@ def translator(monkeypatch) -> AzureTranslator:
 
 
 class TestAzureTranslatorTranslate:
-    def test_writes_back_the_translated_text(self, translator, make_unit):
+    def test_sets_the_translated_text_without_writing_back(self, translator, make_unit):
         translator._client.translate = lambda **kwargs: _result("Bonjour")
 
         unit, written = make_unit("Hello")
         result = translator.translate([unit], "en", "fr")
 
         assert result[0].translated_text == "Bonjour"
-        assert written["k1"] == "Bonjour"
+        assert written == {}
 
     def test_skips_units_marked_skip_translation(self, translator, make_unit):
         calls = []
@@ -41,7 +41,7 @@ class TestAzureTranslatorTranslate:
         translator.translate([unit], "en", "fr")
 
         assert calls == []
-        assert written == {}
+        assert unit.translated_text == ""
 
     def test_raises_immediately_on_authentication_error(self, translator, make_unit):
         def fail(**kwargs):
@@ -79,7 +79,7 @@ class TestAzureTranslatorTranslate:
         translator.translate([unit], "en", "fr")
 
         assert len(calls) == 2
-        assert written["k1"] == "Bonjour"
+        assert unit.translated_text == "Bonjour"
 
     def test_raises_immediately_on_non_rate_limit_api_error(self, translator, make_unit):
         def fail(**kwargs):

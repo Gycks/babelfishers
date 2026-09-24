@@ -4,6 +4,7 @@ from babelfishers.core.tokenization.strategies import (
     DictionaryMarkupStrategy,
     InstructionTagStrategy,
     NoTranslateSpanStrategy,
+    NumericMaskStrategy,
     XmlIgnoreTagStrategy,
 )
 from babelfishers.models.engine import Engine
@@ -39,6 +40,34 @@ class TestDefaultMaskStrategy:
         strategy = DefaultMaskStrategy()
         token = strategy.make_token(0, "ph")
         assert strategy.leftover_pattern(token).search(token.upper()) is not None
+
+
+class TestNumericMaskStrategy:
+    def test_make_token_is_a_number_ending_with_the_index(self):
+        token = NumericMaskStrategy().make_token(4, "ph")
+        assert token.isdigit()
+        assert token.endswith("4")
+
+    def test_placeholder_and_glossary_tokens_never_share_a_leading_digit(self):
+        strategy = NumericMaskStrategy()
+        assert strategy.make_token(0, "ph")[0] != strategy.make_token(0, "gh")[0]
+
+    def test_tokens_of_one_text_are_unique(self):
+        strategy = NumericMaskStrategy()
+        tokens = [strategy.make_token(i, "ph") for i in range(12)]
+        assert len(set(tokens)) == 12
+
+    def test_restore_text_replaces_only_the_whole_number(self):
+        strategy = NumericMaskStrategy()
+        assert strategy.restore_text("Payé 3121 et 33121 et 31210", "3121", "%s") == "Payé %s et 33121 et 31210"
+
+    def test_restore_text_keeps_backslashes_in_the_replacement(self):
+        assert NumericMaskStrategy().restore_text("Chemin 3121", "3121", r"C:\\temp") == r"Chemin C:\\temp"
+
+    def test_leftover_pattern_ignores_the_token_inside_a_longer_number(self):
+        strategy = NumericMaskStrategy()
+        assert strategy.leftover_pattern("3121").search("33121") is None
+        assert strategy.leftover_pattern("3121").search("Total 3121.") is not None
 
 
 class TestXmlIgnoreTagStrategy:
@@ -139,8 +168,8 @@ class TestTokenStrategyFactory:
     def test_openai_uses_instruction_tag_strategy(self):
         assert isinstance(TokenStrategyFactory.get_strategy_for(Engine.OpenAI), InstructionTagStrategy)
 
-    def test_libre_translate_uses_default_mask_strategy(self):
-        assert isinstance(TokenStrategyFactory.get_strategy_for(Engine.LibreTranslate), DefaultMaskStrategy)
+    def test_libre_translate_uses_numeric_mask_strategy(self):
+        assert isinstance(TokenStrategyFactory.get_strategy_for(Engine.LibreTranslate), NumericMaskStrategy)
 
     def test_each_call_returns_a_fresh_strategy_instance(self):
         first = TokenStrategyFactory.get_strategy_for(Engine.DeepL)
