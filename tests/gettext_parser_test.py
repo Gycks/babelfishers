@@ -128,6 +128,41 @@ class TestGettextParserParse:
 
         assert 'msgstr[1] "%d articles"' in destination.read_text(encoding="utf-8")
 
+    def test_save_writes_the_header_one_field_per_line(self, parser, write_po, tmp_path):
+        content = (
+            'msgid ""\nmsgstr ""\n"Project-Id-Version: demo 1.0\\n"\n"Language: pl\\n"\n'
+            '"Content-Type: text/plain; charset=UTF-8\\n"\n\nmsgid "Hello"\nmsgstr ""\n'
+        )
+        result = parser.parse(write_po(content), [])
+
+        destination = tmp_path / "out.po"
+        result.save(destination)
+
+        assert destination.read_text(encoding="utf-8") == content
+
+    def test_save_breaks_a_multi_line_msgstr_after_each_newline_and_wraps_long_segments(
+        self, parser, write_po, tmp_path
+    ):
+        result = parser.parse(write_po('msgid "Hello"\nmsgstr ""\n'), [])
+        long_line = "word " * 20
+        result.units[0].write_back(f"Short\n{long_line.strip()}\nEnd")
+
+        destination = tmp_path / "out.po"
+        result.save(destination)
+
+        lines = destination.read_text(encoding="utf-8").splitlines()
+        assert lines[1:4] == ['msgstr ""', '"Short\\n"', f'"{"word " * 15}"']
+        assert lines[4:] == [f'"{"word " * 4}word\\n"', '"End"']
+
+    def test_save_does_not_break_at_an_escaped_backslash_followed_by_n(self, parser, write_po, tmp_path):
+        result = parser.parse(write_po('msgid "Path"\nmsgstr ""\n'), [])
+        result.units[0].write_back("C:\\new")
+
+        destination = tmp_path / "out.po"
+        result.save(destination)
+
+        assert 'msgstr "C:\\\\new"' in destination.read_text(encoding="utf-8")
+
     def test_save_creates_parent_directories_if_missing(self, parser, write_po, tmp_path):
         source = write_po('msgid "Hello"\nmsgstr ""\n')
         result = parser.parse(source, [])

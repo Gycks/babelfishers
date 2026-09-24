@@ -22,6 +22,7 @@ _CONTINUATION_RE = re.compile(r'^"(.*)"$')
 _ESCAPED_CHAR_RE = re.compile(r"\\(.)")
 _UNESCAPE_MAP: dict[str, str] = {"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\"}
 _FLAGS_COMMENT_RE = re.compile(r"^#,\s*(.*)$")
+_NEWLINE_SEGMENT_RE = re.compile(r"[^\n]*\n|[^\n]+")
 _PO_WRAP_WIDTH = 77
 
 
@@ -245,11 +246,20 @@ class GettextParser(Parser):
         return write_back
 
     def _wrap_po_field(self, field_prefix: str, text: str, width: int = _PO_WRAP_WIDTH) -> list[str]:
-        escaped = self._escape(text)
-        if len(f'{field_prefix} "{escaped}"') <= width:
-            return [f'{field_prefix} "{escaped}"']
+        """Like GNU gettext, end a line after every embedded newline, then wrap what is still too long."""
+        if "\n" not in text[:-1]:
+            single_line = f'{field_prefix} "{self._escape(text)}"'
+            if len(single_line) <= width:
+                return [single_line]
 
         lines = [f'{field_prefix} ""']
+        for segment in _NEWLINE_SEGMENT_RE.findall(text):
+            lines.extend(self._wrap_escaped(self._escape(segment), width))
+        return lines
+
+    @staticmethod
+    def _wrap_escaped(escaped: str, width: int) -> list[str]:
+        lines = []
         remaining = escaped
         max_chunk = max(width - 2, 1)
 

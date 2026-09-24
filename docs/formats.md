@@ -86,7 +86,7 @@ paths = ["i18n/[source]/*.po"]
 - **Adapted to the target.** In the header entry, `Language` is set to the target locale and `Plural-Forms` to the target's gettext plural rule, the same one `pybabel init` writes. Each plural entry gets as many `msgstr[n]` forms as the target needs, for example 2 for `fr`, 3 for `pl` and `ru`, 6 for `ar` and 1 for `ja`. The form the target uses for a count of 1 is translated from `msgid`, and the other forms from `msgid_plural`. If the source has no header entry, one is added.
 - **Left alone.** The other header fields and all comments.
 - **Placeholders protected.** printf style, Python style such as `%(name)s`, and anything in braces.
-- **Good to know.** Translator comments that start with `#.` are sent to the provider as context. The `fuzzy` flag is removed from entries once they are translated. Long lines are wrapped at 77 characters.
+- **Good to know.** Translator comments that start with `#.` are sent to the provider as context. The `fuzzy` flag is removed from entries once they are translated. Text with line breaks, such as the header entry, is written with one line per line break, as GNU gettext does. Long lines are wrapped at 77 characters.
 
 ## Apple strings
 
