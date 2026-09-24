@@ -87,6 +87,5 @@ class GoogleTranslateTranslator(Translator):
 
             translated_text = response.translations[0].translated_text
             unit.translated_text = translated_text
-            unit.write_back(translated_text)
 
         return data

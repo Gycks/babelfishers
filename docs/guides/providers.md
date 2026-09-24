@@ -87,3 +87,4 @@ Babel Fishers does not pick a model for you. Take the model ID from the document
 - **Rate limits are handled.** When a provider says you are sending too much, Babel Fishers waits and tries again, up to three times. The wait grows each time.
 - **Failures are retried.** If a translation fails, Babel Fishers tries once more. If it still fails and you set a different provider for those files, it switches to your default provider.
 - **A final failure stops the run.** A wrong key, an exhausted quota or a refused request ends with an error. Fix the cause and run the command again. Files that already finished are recorded, so they are not translated a second time.
+- **Partial results are kept.** If a provider fails partway through a file, the text it already translated is written and kept in the translation memory. The rest keeps the value from your source file, and the next run translates only that part.

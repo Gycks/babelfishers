@@ -84,6 +84,5 @@ class GoogleTranslator(Translator):
 
             translated_text = parsed.translation.strip()
             unit.translated_text = translated_text
-            unit.write_back(translated_text)
 
         return data

@@ -17,7 +17,7 @@ def translator(monkeypatch) -> GoogleTranslator:
 
 
 class TestGoogleTranslatorTranslate:
-    def test_writes_back_the_parsed_translation(self, translator, make_unit):
+    def test_sets_the_parsed_translation_without_writing_back(self, translator, make_unit):
         translator._client.models.generate_content = lambda **kwargs: _response(
             ModelTranslationResponse(translation="Bonjour")
         )
@@ -26,7 +26,7 @@ class TestGoogleTranslatorTranslate:
         result = translator.translate([unit], "en", "fr")
 
         assert result[0].translated_text == "Bonjour"
-        assert written["k1"] == "Bonjour"
+        assert written == {}
 
     def test_skips_units_marked_skip_translation(self, translator, make_unit):
         calls = []
@@ -36,7 +36,7 @@ class TestGoogleTranslatorTranslate:
         translator.translate([unit], "en", "fr")
 
         assert calls == []
-        assert written == {}
+        assert unit.translated_text == ""
 
     def test_raises_immediately_on_authentication_error(self, translator, make_unit):
         def fail(**kwargs):
@@ -64,7 +64,7 @@ class TestGoogleTranslatorTranslate:
         translator.translate([unit], "en", "fr")
 
         assert len(calls) == 2
-        assert written["k1"] == "Bonjour"
+        assert unit.translated_text == "Bonjour"
 
     def test_raises_when_the_response_has_no_parsed_translation(self, translator, make_unit):
         translator._client.models.generate_content = lambda **kwargs: _response(None)

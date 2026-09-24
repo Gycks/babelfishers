@@ -99,7 +99,7 @@ Every attempt failed, with every provider you set. The messages above this one g
 
 ### Placeholder mismatch
 
-A placeholder in the translation differs from the source. Open the file and fix the text. See [Placeholders](placeholders.md).
+A placeholder in the translation still differed from the source after every retry and provider. That text was left untranslated, and the next run tries it again. If it keeps failing, set another provider for those files. See [Placeholders](placeholders.md).
 
 ### Plural group is missing required categories
 

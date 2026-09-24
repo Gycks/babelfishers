@@ -74,6 +74,5 @@ class DeeplTranslator(Translator):
                 raise TypeError(ConsoleFormatter.error("Invalid DeepL response format type"))
 
             unit.translated_text = result.text
-            unit.write_back(result.text)
 
         return data

@@ -77,18 +77,23 @@ class Runtime:
         self._log_up_to_date(plans)
 
         run_lock_entries: list[RunLockEntry] = []
+        incomplete: list[tuple[str, str]] = []
         translated: list[Path] = []
 
         try:
             with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
-                futures: dict[Future[RunLockEntry], _StaleJob] = {
+                futures: dict[Future[RunLockEntry | None], _StaleJob] = {
                     executor.submit(self._run_single_locale, job): job for job in stale_jobs
                 }
 
                 for future in as_completed(futures):
                     job = futures[future]
                     try:
-                        run_lock_entries.append(future.result())
+                        entry = future.result()
+                        if entry is None:
+                            incomplete.append((str(job.plan.source_path), job.plan.locale))
+                        else:
+                            run_lock_entries.append(entry)
                         translated.append(job.plan.destination.resolve())
                     except Exception as exe:
                         self._logger.exception(
@@ -99,6 +104,8 @@ class Runtime:
             # Best-effort: whatever succeeded before a failure is still recorded,
             # so a re-run doesn't re-translate files that already completed.
             self._run_lock_store.create(run_lock_entries)
+            # A file with untranslated units stays stale, even if an older run had completed it.
+            self._run_lock_store.discard(incomplete)
             # Entries for files or locales that left the project would otherwise stay forever.
             orphans_removed = self._run_lock_store.remove_orphans(
                 {(str(plan.source_path), plan.locale) for plan in plans}
@@ -238,12 +245,23 @@ class Runtime:
     def _label(self, job: _StaleJob) -> str:
         return f"[{self._config.source_locale} - {job.plan.locale}] {job.plan.source_path}"
 
-    def _run_single_locale(self, job: _StaleJob) -> RunLockEntry:
+    def _run_single_locale(self, job: _StaleJob) -> RunLockEntry | None:
+        """Returns the run lock entry, or None when units were left untranslated so the next run retries them."""
         plan = job.plan
 
         self._logger.info(ConsoleFormatter.info(f"{self._label(job)} -> Running translation"))
 
-        job.pipeline.run(job.parse_result, self._config.source_locale, plan.locale, plan.destination)
+        left_untranslated = job.pipeline.run(
+            job.parse_result, self._config.source_locale, plan.locale, plan.destination
+        )
+
+        if left_untranslated:
+            self._logger.warning(
+                ConsoleFormatter.warning(
+                    f"{self._label(job)} -> {left_untranslated} unit(s) left untranslated. The next run retries them."
+                )
+            )
+            return None
 
         self._logger.info(ConsoleFormatter.success(f"{self._label(job)} -> Pipeline success"))
 

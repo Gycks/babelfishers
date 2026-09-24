@@ -104,6 +104,5 @@ class AzureTranslator(Translator):
 
             translated_text = result[0].translations[0].text
             unit.translated_text = translated_text
-            unit.write_back(translated_text)
 
         return data

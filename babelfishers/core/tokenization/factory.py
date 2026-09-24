@@ -3,6 +3,7 @@ from babelfishers.core.tokenization.strategies import (
     DictionaryMarkupStrategy,
     InstructionTagStrategy,
     NoTranslateSpanStrategy,
+    NumericMaskStrategy,
     XmlIgnoreTagStrategy,
 )
 from babelfishers.core.tokenization.token_strategy import TokenStrategy
@@ -19,7 +20,7 @@ class TokenStrategyFactory:
         Engine.Mistral: InstructionTagStrategy,
         Engine.Google: InstructionTagStrategy,
         Engine.DeepSeek: InstructionTagStrategy,
-        Engine.LibreTranslate: DefaultMaskStrategy,
+        Engine.LibreTranslate: NumericMaskStrategy,
     }
 
     @classmethod
