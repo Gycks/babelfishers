@@ -83,7 +83,8 @@ paths = ["i18n/[source]/*.po"]
 **Config key:** `po`
 
 - **Translated.** The `msgid` text becomes the `msgstr` of the translated file. Plural entries are handled through `msgid_plural` and `msgstr[n]`. Entries with a `msgctxt` are supported.
-- **Left alone.** The header entry and all comments.
+- **Adapted to the target.** In the header entry, `Language` is set to the target locale and `Plural-Forms` to the target's gettext plural rule, the same one `pybabel init` writes. Each plural entry gets as many `msgstr[n]` forms as the target needs, for example 2 for `fr`, 3 for `pl` and `ru`, 6 for `ar` and 1 for `ja`. The form the target uses for a count of 1 is translated from `msgid`, and the other forms from `msgid_plural`. If the source has no header entry, one is added.
+- **Left alone.** The other header fields and all comments.
 - **Placeholders protected.** printf style, Python style such as `%(name)s`, and anything in braces.
 - **Good to know.** Translator comments that start with `#.` are sent to the provider as context. The `fuzzy` flag is removed from entries once they are translated. Long lines are wrapped at 77 characters.
 
@@ -141,6 +142,6 @@ The way you write a key depends on the format.
 | JSON, YAML, ARB | The path to the value, such as `app.name`. Use `items[0]` for list entries. |
 | Java properties, Apple strings, resx | The key name. |
 | Android | The name. Use `colors[0]` for array items and `apples.one` for plural items. |
-| gettext | The `msgid` text. Use `msgid[0]` and `msgid[1]` for plural forms. |
+| gettext | The `msgid` text. Use `msgid[0]`, `msgid[1]` and so on for plural forms, numbered as in the target's `Plural-Forms`. |
 | XLIFF | The unit `id`. Use `file-id:unit-id` when a document has several files. |
 | HTML | Not used. Mark elements in the source instead. |
