@@ -30,11 +30,12 @@ class Parser(ABC):
         raise NotImplementedError("The abstract method 'parse()' must be implemented by subclasses.")
 
     @abstractmethod
-    def clone(self, data: ParseResult) -> ParseResult:
+    def clone(self, data: ParseResult, target_locale: str | None = None) -> ParseResult:
         """Clones a `ParseResult` object instance.
 
         Args:
             data: The `ParseResult` object.
+            target_locale: The locale the clone will be translated into.
 
         Returns:
             A cloned copy of tje `ParseResult` object.

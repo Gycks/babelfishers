@@ -210,7 +210,7 @@ class HTMLParser(Parser):
             sibling = sibling.next_sibling
         return nodes
 
-    def clone(self, data: ParseResult) -> ParseResult:
+    def clone(self, data: ParseResult, target_locale: str | None = None) -> ParseResult:
         cloned_soup = BeautifulSoup(str(data.document), "html.parser")
         cloned_nodes = list(cloned_soup.descendants)
 

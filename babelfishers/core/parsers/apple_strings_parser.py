@@ -158,7 +158,7 @@ class AppleStringsParser(Parser):
         self._logger.info(ConsoleFormatter.success(f"Successfully parsed source {source_path}"))
         return ParseResult(source_path=source_path, units=units, save=self._make_save(document), document=document)
 
-    def clone(self, data: ParseResult) -> ParseResult:
+    def clone(self, data: ParseResult, target_locale: str | None = None) -> ParseResult:
         cloned_document: list[dict[str, str]] = deepcopy(data.document)
 
         index_by_key: dict[str, list[int]] = {}

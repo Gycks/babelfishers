@@ -95,7 +95,7 @@ class DotNetResxParser(Parser):
         self._logger.info(ConsoleFormatter.success(f"Successfully parsed source {source_path}"))
         return ParseResult(source_path=source_path, units=units, save=self._make_save(root), document=root)
 
-    def clone(self, data: ParseResult) -> ParseResult:
+    def clone(self, data: ParseResult, target_locale: str | None = None) -> ParseResult:
         cloned_root = parse_xml_string(serialize_xml(data.document))
         entries = self._collect_entries(cloned_root)
 
