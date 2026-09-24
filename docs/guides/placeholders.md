@@ -37,13 +37,13 @@ In ICU messages an apostrophe followed by a brace, as in `'{'`, means a literal 
 
 After translation, Babel Fishers checks that the protected markers are intact. If one is damaged or missing, that attempt counts as failed. It is tried again, and then the next provider is used if you set one. See [Translation providers](providers.md).
 
-A second check compares the placeholders in the source with those in the translation. When they differ, you see a warning like this one.
+A second check compares the placeholders in the source with those in the translation. When they differ, that text is tried again, and then the next provider is used if you set one. If the placeholders still differ, the text is left untranslated and you see a warning like this one.
 
 ```text
-Placeholder mismatch for unit 'greeting': expected ['{name}'], got ['{nom}']
+Placeholder mismatch for unit 'greeting': expected ['{name}'], got ['{nom}']. Left untranslated.
 ```
 
-The file is still written. Open it and fix the text, or translate again with another provider. See [Troubleshooting](troubleshooting.md).
+The rest of the file is still written. The untranslated text keeps the value it has in your source file, and it is not saved in the translation memory, so the next run tries it again. A translation in the memory with different placeholders is also translated again. See [Troubleshooting](troubleshooting.md).
 
 ## Plural forms
 
