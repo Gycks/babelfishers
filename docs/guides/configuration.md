@@ -100,7 +100,7 @@ paths = [
 | Key | Required | What it does |
 |---|---|---|
 | `path` | Yes | The file or pattern to translate. |
-| `exclude` | No | A list of files or patterns to skip. |
+| `exclude` | No | A list of files, folders or patterns to skip. A folder skips every file inside it, at any depth. |
 | `engine` | No | A provider to use for these files instead of the default. |
 | `excluded_keys` | No | Keys inside the files that must stay untranslated. |
 

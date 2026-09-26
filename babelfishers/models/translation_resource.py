@@ -140,16 +140,18 @@ class TranslationResource(BaseModel):
                     Path(p)
                     for exclude in excluded_patterns
                     if exclude is not None
-                    for p in glob.glob(exclude.replace(_PLACEHOLDER, locale))
+                    for p in glob.glob(exclude.replace(_PLACEHOLDER, locale), recursive=True)
                 }
 
+                # A path is skipped when it, or any folder containing it, was excluded.
                 resource_paths = [
                     ResourcePath(
                         path=path,
                         pattern=_build_destination_pattern(path_pattern, resolved_pattern, str(path)),
                     )
                     for p in glob.glob(resolved_pattern, recursive=True)
-                    if (path := Path(p)) not in excluded
+                    for path in [Path(p)]
+                    if excluded.isdisjoint([path, *path.parents])
                 ]
 
                 engine_string = entry.get("engine")
