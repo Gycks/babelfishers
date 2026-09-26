@@ -91,6 +91,19 @@ class TestTranslationResourceValidation:
         found_paths = {p.path for p in resources[0].paths}
         assert found_paths == {Path("locales/en/a.json")}
 
+    @pytest.mark.parametrize("exclude", ["locales/[source]/pages/draft/**", "locales/[source]/pages/draft"])
+    def test_exclude_skips_files_nested_under_excluded_folder(self, tmp_path, monkeypatch, make_file, exclude):
+        monkeypatch.chdir(tmp_path)
+        make_file("locales/en/pages/home.json")
+        make_file("locales/en/pages/draft/a.json")
+        make_file("locales/en/pages/draft/nested/b.json")
+
+        data = {"paths": [{"path": "locales/[source]/pages/**/*.json", "exclude": [exclude]}]}
+        resources = TranslationResource.load("en", "json", data)
+
+        found_paths = {p.path for p in resources[0].paths}
+        assert found_paths == {Path("locales/en/pages/home.json")}
+
     def test_carries_excluded_keys_through_from_dict_entry(self, tmp_path, monkeypatch, make_file):
         monkeypatch.chdir(tmp_path)
         make_file("messages_en.json")
