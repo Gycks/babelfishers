@@ -1,3 +1,6 @@
+import os
+import stat
+
 import pytest
 
 from babelfishers.utils.utils import atomic_write, detect_newline
@@ -32,6 +35,25 @@ class TestAtomicWrite:
         atomic_write(destination, lambda tmp: tmp.write_text("replaced", encoding="utf-8"))
 
         assert destination.read_text(encoding="utf-8") == "replaced"
+
+    def test_keeps_the_mode_of_an_existing_file(self, tmp_path):
+        destination = tmp_path / "out.txt"
+        destination.write_text("original", encoding="utf-8")
+        destination.chmod(0o640)
+
+        atomic_write(destination, lambda tmp: tmp.write_text("replaced", encoding="utf-8"))
+
+        assert stat.S_IMODE(destination.stat().st_mode) == 0o640
+
+    def test_gives_a_new_file_the_mode_the_umask_allows(self, tmp_path):
+        destination = tmp_path / "out.txt"
+        umask = os.umask(0o022)
+        try:
+            atomic_write(destination, lambda tmp: tmp.write_text("hello", encoding="utf-8"))
+        finally:
+            os.umask(umask)
+
+        assert stat.S_IMODE(destination.stat().st_mode) == 0o644
 
     def test_leaves_the_original_file_untouched_when_the_writer_raises(self, tmp_path):
         destination = tmp_path / "out.txt"
