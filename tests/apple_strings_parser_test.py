@@ -66,14 +66,18 @@ class TestAppleStringsParserParse:
 
         assert [u.key for u in result.units] == ["greeting"]
 
-    def test_duplicate_key_logs_a_warning(self, parser, write_strings, caplog):
+    def test_duplicate_key_translates_every_value_and_logs_a_warning(self, parser, write_strings, tmp_path, caplog):
         source = write_strings('"dup" = "first";\n"dup" = "second";\n')
 
         with caplog.at_level(logging.WARNING):
-            result = parser.parse(source, [])
+            cloned = parser.clone(parser.parse(source, []))
+        for unit in cloned.units:
+            unit.write_back(unit.source_text.upper())
+        destination = tmp_path / "out.strings"
+        cloned.save(destination)
 
-        assert any("Duplicate .strings key" in r.message for r in caplog.records)
-        assert result.units[-1].source_text == "second"
+        assert destination.read_text(encoding="utf-8") == '"dup" = "FIRST";\n"dup" = "SECOND";\n'
+        assert any("Key 'dup' appears 2 times" in r.message for r in caplog.records)
 
     def test_unrecognized_content_is_preserved_and_logs_a_warning(self, parser, write_strings, tmp_path, caplog):
         source = write_strings('"greeting" = "Hello";\nnot a real entry\n"farewell" = "Bye";\n')

@@ -119,7 +119,7 @@ class TestPlaceholderGuardRestore:
         protected[0].translated_text = protected[0].source_text
         guard.restore(protected)
 
-        assert guard._token_maps.get("k1") is not None
+        assert guard._token_maps.get(0) is not None
 
         # a second restore() call against the same guard instance still works
         protected[0].translated_text = protected[0].source_text
@@ -127,3 +127,14 @@ class TestPlaceholderGuardRestore:
 
         assert all_clean is True
         assert protected[0].translated_text == "Hello %s"
+
+    def test_restores_each_unit_of_a_repeated_key_with_its_own_placeholders(self):
+        guard = PlaceholderGuard(Engine.DeepL)
+        protected = guard.protect([_unit("msg", "Sent {name} {count} files"), _unit("msg", "Got {count} from {name}")])
+        for unit in protected:
+            unit.translated_text = unit.source_text
+
+        all_clean = guard.restore(protected)
+
+        assert all_clean is True
+        assert [unit.translated_text for unit in protected] == ["Sent {name} {count} files", "Got {count} from {name}"]

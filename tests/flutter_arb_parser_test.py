@@ -99,6 +99,17 @@ class TestFlutterArbParserParse:
         assert any("Duplicate ARB key" in r.message for r in caplog.records)
         assert result.units[0].source_text == "Bonjour"
 
+    def test_flat_dotted_key_and_plural_category_sharing_a_key_are_both_translated(self, parser, write_arb, caplog):
+        source = write_arb({"count": "{n, plural, one{One item} other{{n} items}}", "count.one": "Flat"})
+
+        with caplog.at_level(logging.WARNING):
+            cloned = parser.clone(parser.parse(source, []))
+        for unit in cloned.units:
+            unit.write_back(unit.source_text.upper())
+
+        assert cloned.document == {"count": "{n, plural, one {ONE ITEM} other {{N} ITEMS}}", "count.one": "FLAT"}
+        assert any("Key 'count.one' appears 2 times" in r.message for r in caplog.records)
+
     def test_all_units_are_tagged_with_flutter_arb_resource_type(self, parser, write_arb):
         source = write_arb({"greeting": "Hello"})
         result = parser.parse(source, [])

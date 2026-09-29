@@ -6,7 +6,7 @@ from typing import Any
 
 import yaml
 
-from babelfishers.core.parsers.parser import Parser
+from babelfishers.core.parsers.parser import Parser, excluded_keys_without_duplicates
 from babelfishers.core.parsers.registry import register
 from babelfishers.models.translation_resource import TranslationResourceType
 from babelfishers.models.translations import ParseResult, TranslationUnit
@@ -71,11 +71,18 @@ class YAMLParser(Parser):
 
         loader = _make_duplicate_key_warning_loader(self._logger)
         raw: Any = yaml.load(source_path.read_text(encoding="utf-8"), Loader=loader) or {}  # noqa: S506
-        units: list[TranslationUnit] = []
-        self._walk(raw, prefix="", units=units, excluded_keys=set(excluded_keys))
+        excluded = excluded_keys_without_duplicates(excluded_keys, self._build_units(raw, set()), self._logger)
+        units = self._build_units(raw, excluded)
 
         self._logger.info(ConsoleFormatter.success(f"Successfully parsed source {source_path}"))
-        return ParseResult(source_path=source_path, units=units, save=self._make_save(raw), document=raw)
+        return ParseResult(
+            source_path=source_path, units=units, save=self._make_save(raw), document=raw, excluded_keys=excluded
+        )
+
+    def _build_units(self, document: Any, excluded_keys: set[str]) -> list[TranslationUnit]:
+        units: list[TranslationUnit] = []
+        self._walk(document, prefix="", units=units, excluded_keys=excluded_keys)
+        return units
 
     def _walk(
         self,
@@ -128,17 +135,10 @@ class YAMLParser(Parser):
     def clone(self, data: ParseResult, target_locale: str | None = None) -> ParseResult:
         cloned_document = deepcopy(data.document)
 
-        rebuilt_units: list[TranslationUnit] = []
-        self._walk(cloned_document, prefix="", units=rebuilt_units, excluded_keys=set())
-        rebuilt_by_key = {unit.key: unit for unit in rebuilt_units}
-
-        cloned_units = [
-            unit.model_copy(update={"write_back": rebuilt_by_key[unit.key].write_back}) for unit in data.units
-        ]
-
         return ParseResult(
             source_path=data.source_path,
-            units=cloned_units,
+            units=self._build_units(cloned_document, data.excluded_keys),
             document=cloned_document,
             save=self._make_save(cloned_document),
+            excluded_keys=data.excluded_keys,
         )

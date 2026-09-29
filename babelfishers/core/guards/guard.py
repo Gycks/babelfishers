@@ -11,7 +11,7 @@ class ProtectionGuard(ABC):
     def __init__(self, engine: Engine, namespace: str) -> None:
         self._namespace: str = namespace
         self._strategy: TokenStrategy = TokenStrategyFactory.get_strategy_for(engine)
-        self._token_maps: dict[str, list[ProtectedEntry]] = {}
+        self._token_maps: dict[int, list[ProtectedEntry]] = {}
 
     """
     Abstract interface for protecting and restoring translation data.
@@ -41,14 +41,15 @@ class ProtectionGuard(ABC):
         NOTE: The translation units are mutated in-place.
 
         Args:
-            data: Translation units whose protected content should be restored.
+            data: The list `protect` returned, in the same order. Units are matched
+                by position because a file can repeat a key.
 
         Return:
             True, if the process was successful.
         """
         all_clean = True
-        for unit in data:
-            entries = self._token_maps.get(unit.key)
+        for position, unit in enumerate(data):
+            entries = self._token_maps.get(position)
             if not entries or unit.translated_text is None:
                 continue
 

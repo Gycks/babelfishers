@@ -1,4 +1,5 @@
 import json
+import logging
 
 import pytest
 
@@ -79,6 +80,15 @@ class TestJSONParserParse:
         result = parser.parse(source, ["items[1]"])
 
         assert [u.key for u in result.units] == ["items[0]"]
+
+    def test_excluded_key_that_appears_more_than_once_is_ignored_with_a_warning(self, parser, write_json, caplog):
+        source = write_json({"home.title": "Flat", "home": {"title": "Nested"}, "footer": "Bye"})
+
+        with caplog.at_level(logging.WARNING):
+            result = parser.parse(source, ["home.title", "footer"])
+
+        assert [u.source_text for u in result.units] == ["Flat", "Nested"]
+        assert any("Ignoring excluded key 'home.title'" in r.message for r in caplog.records)
 
     def test_empty_list_produces_no_units(self, parser, write_json):
         source = write_json({"items": []})
@@ -225,6 +235,17 @@ class TestJSONParserClone:
         _unit_by_key(cloned.units, "items[0].name").write_back("translated")
 
         assert cloned.document["items"][0]["name"] == "translated"
+
+    def test_clone_translates_a_flat_dotted_key_and_the_nested_path_it_shares(self, parser, write_json, caplog):
+        source = write_json({"home.title": "Flat", "home": {"title": "Nested"}})
+
+        with caplog.at_level(logging.WARNING):
+            cloned = parser.clone(parser.parse(source, []))
+        for unit in cloned.units:
+            unit.write_back(unit.source_text.upper())
+
+        assert cloned.document == {"home.title": "FLAT", "home": {"title": "NESTED"}}
+        assert any("Key 'home.title' appears 2 times" in r.message for r in caplog.records)
 
     def test_clone_write_back_targets_a_flat_key_containing_a_dot(self, parser, write_json):
         source = write_json({"home.title": "Welcome"})

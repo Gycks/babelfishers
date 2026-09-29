@@ -9,7 +9,7 @@ from typing import Any
 from babel import UnknownLocaleError
 from babel.messages.plurals import get_plural
 
-from babelfishers.core.parsers.parser import Parser
+from babelfishers.core.parsers.parser import Parser, excluded_keys_without_duplicates
 from babelfishers.core.parsers.registry import register
 from babelfishers.models.translation_resource import TranslationResourceType
 from babelfishers.models.translations import ParseResult, TranslationUnit
@@ -127,7 +127,7 @@ class GettextParser(Parser):
         for entry in document:
             if "__meta__" in entry:
                 return entry
-        return {"__meta__": True, "newline": "\n", "excluded_keys": []}
+        return {"__meta__": True, "newline": "\n"}
 
     @staticmethod
     def _header_of(document: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -190,20 +190,18 @@ class GettextParser(Parser):
 
         return singular_slot
 
-    def _index_entries(self, document: list[dict[str, Any]]) -> dict[str, tuple[dict[str, Any], int | None]]:
-        index: dict[str, tuple[dict[str, Any], int | None]] = {}
+    def _index_entries(self, document: list[dict[str, Any]]) -> list[tuple[str, dict[str, Any], int | None]]:
+        index: list[tuple[str, dict[str, Any], int | None]] = []
         for entry in document:
             if "__meta__" in entry or not entry["msgid"].strip():
                 continue
 
             base_key = self._entry_key(entry)
             if entry["msgid_plural"] is None:
-                if base_key in index:
-                    self._logger.warning(ConsoleFormatter.warning(f"Duplicate PO msgid '{base_key}', keeping last"))
-                index[base_key] = (entry, None)
+                index.append((base_key, entry, None))
             else:
                 for i in entry["msgstr_plural"]:
-                    index[f"{base_key}[{i}]"] = (entry, i)
+                    index.append((f"{base_key}[{i}]", entry, i))
 
         return index
 
@@ -297,12 +295,12 @@ class GettextParser(Parser):
 
         return save
 
-    def _build_units(self, document: list[dict[str, Any]], singular_slot: int | None) -> list[TranslationUnit]:
-        excluded = set(self._meta_of(document)["excluded_keys"])
-
+    def _build_units(
+        self, document: list[dict[str, Any]], singular_slot: int | None, excluded_keys: set[str]
+    ) -> list[TranslationUnit]:
         units: list[TranslationUnit] = []
-        for key, (entry, plural_index) in self._index_entries(document).items():
-            if key in excluded:
+        for key, entry, plural_index in self._index_entries(document):
+            if key in excluded_keys:
                 continue
 
             if plural_index is None:
@@ -346,11 +344,19 @@ class GettextParser(Parser):
         newline = detect_newline(raw_text)
 
         document = self._parse_entries(raw_text)
-        document.append({"__meta__": True, "newline": newline, "excluded_keys": list(excluded_keys)})
-        units = self._build_units(document, singular_slot=0)
+        document.append({"__meta__": True, "newline": newline})
+        all_units = self._build_units(document, singular_slot=0, excluded_keys=set())
+        excluded = excluded_keys_without_duplicates(excluded_keys, all_units, self._logger)
+        units = self._build_units(document, singular_slot=0, excluded_keys=excluded)
 
         self._logger.info(ConsoleFormatter.success(f"Successfully parsed source {source_path}"))
-        return ParseResult(source_path=source_path, units=units, save=self._make_save(document), document=document)
+        return ParseResult(
+            source_path=source_path,
+            units=units,
+            save=self._make_save(document),
+            document=document,
+            excluded_keys=excluded,
+        )
 
     def clone(self, data: ParseResult, target_locale: str | None = None) -> ParseResult:
         cloned_document: list[dict[str, Any]] = deepcopy(data.document)
@@ -358,7 +364,8 @@ class GettextParser(Parser):
 
         return ParseResult(
             source_path=data.source_path,
-            units=self._build_units(cloned_document, singular_slot),
+            units=self._build_units(cloned_document, singular_slot, data.excluded_keys),
             document=cloned_document,
             save=self._make_save(cloned_document),
+            excluded_keys=data.excluded_keys,
         )

@@ -25,6 +25,8 @@ class ParseResult(BaseModel):
     source_path: Path
     units: list[TranslationUnit]
     save: Callable[[Path], None]
+    # The exclusions `units` were built with, so `clone` builds the same units from its copy.
+    excluded_keys: set[str] = Field(default_factory=set)
 
 
 class StoreStats(BaseModel):

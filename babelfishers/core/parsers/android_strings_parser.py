@@ -3,7 +3,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from babelfishers.core.parsers.parser import Parser
+from babelfishers.core.parsers.parser import Parser, excluded_keys_without_duplicates
 from babelfishers.core.parsers.registry import register
 from babelfishers.core.parsers.xml_support import inner_xml, parse_xml, parse_xml_string, serialize_xml, set_inner_xml
 from babelfishers.models.translation_resource import TranslationResourceType
@@ -18,13 +18,8 @@ class AndroidStringsParser(Parser):
         self._logger: logging.Logger = logging.getLogger(__name__)
         self._ALLOWED_EXTENSION: str = ".xml"
 
-    def _collect_entries(self, root: Any) -> dict[str, Any]:
-        entries: dict[str, Any] = {}
-
-        def register_entry(key: str, element: Any) -> None:
-            if key in entries:
-                self._logger.warning(ConsoleFormatter.warning(f"Duplicate Android string key '{key}', keeping last"))
-            entries[key] = element
+    def _collect_entries(self, root: Any) -> list[tuple[str, Any]]:
+        entries: list[tuple[str, Any]] = []
 
         for string_el in root.findall("string"):
             name = string_el.get("name")
@@ -33,7 +28,7 @@ class AndroidStringsParser(Parser):
                 continue
             if string_el.get("translatable") == "false":
                 continue
-            register_entry(name, string_el)
+            entries.append((name, string_el))
 
         for array_el in root.findall("string-array"):
             name = array_el.get("name")
@@ -45,7 +40,7 @@ class AndroidStringsParser(Parser):
             if array_el.get("translatable") == "false":
                 continue
             for i, item_el in enumerate(array_el.findall("item")):
-                register_entry(f"{name}[{i}]", item_el)
+                entries.append((f"{name}[{i}]", item_el))
 
         for plurals_el in root.findall("plurals"):
             name = plurals_el.get("name")
@@ -61,7 +56,7 @@ class AndroidStringsParser(Parser):
                         ConsoleFormatter.warning(f"Skipping <item> in <plurals name='{name}'> with no 'quantity'")
                     )
                     continue
-                register_entry(f"{name}.{quantity}", item_el)
+                entries.append((f"{name}.{quantity}", item_el))
 
         return entries
 
@@ -87,11 +82,18 @@ class AndroidStringsParser(Parser):
 
         root = parse_xml(source_path)
         entries = self._collect_entries(root)
-        excluded = set(excluded_keys)
+        excluded = excluded_keys_without_duplicates(excluded_keys, self._build_units(entries, set()), self._logger)
+        units = self._build_units(entries, excluded)
 
+        self._logger.info(ConsoleFormatter.success(f"Successfully parsed source {source_path}"))
+        return ParseResult(
+            source_path=source_path, units=units, save=self._make_save(root), document=root, excluded_keys=excluded
+        )
+
+    def _build_units(self, entries: list[tuple[str, Any]], excluded_keys: set[str]) -> list[TranslationUnit]:
         units: list[TranslationUnit] = []
-        for key, element in entries.items():
-            if key in excluded:
+        for key, element in entries:
+            if key in excluded_keys:
                 continue
 
             source_text = inner_xml(element)
@@ -107,20 +109,15 @@ class AndroidStringsParser(Parser):
                 )
             )
 
-        self._logger.info(ConsoleFormatter.success(f"Successfully parsed source {source_path}"))
-        return ParseResult(source_path=source_path, units=units, save=self._make_save(root), document=root)
+        return units
 
     def clone(self, data: ParseResult, target_locale: str | None = None) -> ParseResult:
         cloned_root = parse_xml_string(serialize_xml(data.document))
-        entries = self._collect_entries(cloned_root)
-
-        cloned_units = []
-        for unit in data.units:
-            cloned_units.append(unit.model_copy(update={"write_back": self._make_write_back(entries[unit.key])}))
 
         return ParseResult(
             source_path=data.source_path,
-            units=cloned_units,
+            units=self._build_units(self._collect_entries(cloned_root), data.excluded_keys),
             document=cloned_root,
             save=self._make_save(cloned_root),
+            excluded_keys=data.excluded_keys,
         )

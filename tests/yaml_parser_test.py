@@ -206,6 +206,17 @@ class TestYAMLParserClone:
 
         assert cloned.document == {"en": {True: "AGREE", False: "DECLINE"}}
 
+    def test_clone_translates_a_flat_dotted_key_and_the_nested_path_it_shares(self, parser, write_raw_yaml, caplog):
+        source = write_raw_yaml("home.title: Flat\nhome:\n  title: Nested\n")
+
+        with caplog.at_level(logging.WARNING):
+            cloned = parser.clone(parser.parse(source, []))
+        for unit in cloned.units:
+            unit.write_back(unit.source_text.upper())
+
+        assert cloned.document == {"home.title": "FLAT", "home": {"title": "NESTED"}}
+        assert any("Key 'home.title' appears 2 times" in r.message for r in caplog.records)
+
     def test_clone_of_empty_units_list_returns_empty_units_list(self, parser, write_yaml):
         source = write_yaml({})
         original = parser.parse(source, [])

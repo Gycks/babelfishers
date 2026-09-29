@@ -182,6 +182,13 @@ class TranslationPipeline:
                     except Exception as exe:
                         provider_error = exe
 
+                    if glossary_guard:
+                        if not glossary_guard.restore(dataset):
+                            raise ValueError("Unable to restore translation units.")
+
+                    if not placeholder_guard.restore(dataset):
+                        raise ValueError("Unable to restore translation units.")
+
                     # Providers translate unit by unit, so the units finished before an error are kept
                     # and only the rest is sent again.
                     finished = [
@@ -189,14 +196,6 @@ class TranslationPipeline:
                         for i, unit in zip(pending, dataset, strict=True)
                         if provider_error is None or unit.translated_text or unit.skip_translation
                     ]
-                    translations = [unit for _, unit in finished]
-
-                    if glossary_guard:
-                        if not glossary_guard.restore(translations):
-                            raise ValueError("Unable to restore translation units.")
-
-                    if not placeholder_guard.restore(translations):
-                        raise ValueError("Unable to restore translation units.")
 
                     finished_indices = {i for i, _ in finished}
                     mismatched = [i for i in pending if i not in finished_indices]

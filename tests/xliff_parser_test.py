@@ -97,17 +97,25 @@ class TestXLIFFParserParse:
         assert any("no <source>" in r.message for r in caplog.records)
         assert result.units == []
 
-    def test_duplicate_trans_unit_id_logs_a_warning(self, parser, write_xliff, caplog):
+    def test_duplicate_trans_unit_id_translates_every_value_and_logs_a_warning(
+        self, parser, write_xliff, tmp_path, caplog
+    ):
         source = write_xliff(
             '<trans-unit id="dup"><source>first</source></trans-unit>'
             '<trans-unit id="dup"><source>second</source></trans-unit>'
         )
 
         with caplog.at_level(logging.WARNING):
-            result = parser.parse(source, [])
+            cloned = parser.clone(parser.parse(source, []))
+        for unit in cloned.units:
+            unit.write_back(unit.source_text.upper())
+        destination = tmp_path / "out.xliff"
+        cloned.save(destination)
 
-        assert any("Duplicate unit id" in r.message for r in caplog.records)
-        assert result.units[0].source_text == "second"
+        content = destination.read_text(encoding="utf-8")
+        assert "<source>first</source><target>FIRST</target>" in content
+        assert "<source>second</source><target>SECOND</target>" in content
+        assert any("Key 'dup' appears 2 times" in r.message for r in caplog.records)
 
     def test_preserves_xml_comments_on_save(self, parser, write_xliff, tmp_path):
         source = write_xliff('<!-- section note --><trans-unit id="greeting"><source>Hello</source></trans-unit>')
