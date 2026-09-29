@@ -148,6 +148,18 @@ class TestXLIFFParserParse:
         assert '<source>Hello <g id="1">world</g>!</source>' in content
         assert '<target>Bonjour <g id="1">world</g> !</target>' in content
 
+    def test_escaped_ampersand_round_trips_through_write_back(self, parser, write_xliff, tmp_path):
+        source = write_xliff('<trans-unit id="terms"><source>Terms &amp; Conditions</source></trans-unit>')
+        result = parser.parse(source, [])
+
+        result.units[0].write_back(result.units[0].source_text.replace("Terms", "Termes"))
+
+        destination = tmp_path / "out.xliff"
+        result.save(destination)
+
+        assert result.units[0].source_text == "Terms &amp; Conditions"
+        assert "<target>Termes &amp; Conditions</target>" in destination.read_text(encoding="utf-8")
+
     def test_write_back_populates_missing_target_without_touching_source(self, parser, write_xliff, tmp_path):
         source = write_xliff('<trans-unit id="greeting"><source>Hello</source></trans-unit>')
         result = parser.parse(source, [])

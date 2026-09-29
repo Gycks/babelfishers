@@ -226,6 +226,15 @@ class TestJSONParserClone:
 
         assert cloned.document["items"][0]["name"] == "translated"
 
+    def test_clone_write_back_targets_a_flat_key_containing_a_dot(self, parser, write_json):
+        source = write_json({"home.title": "Welcome"})
+        original = parser.parse(source, [])
+        cloned = parser.clone(original)
+
+        _unit_by_key(cloned.units, "home.title").write_back("Bienvenue")
+
+        assert cloned.document == {"home.title": "Bienvenue"}
+
     def test_clone_of_empty_units_list_returns_empty_units_list(self, parser, write_json):
         source = write_json({})
         original = parser.parse(source, [])

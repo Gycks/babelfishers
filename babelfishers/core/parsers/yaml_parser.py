@@ -1,5 +1,4 @@
 import logging
-import re
 from collections.abc import Callable
 from copy import deepcopy
 from pathlib import Path
@@ -42,7 +41,6 @@ def _make_duplicate_key_warning_loader(logger: logging.Logger) -> type[yaml.Safe
 class YAMLParser(Parser):
     def __init__(self) -> None:
         self._logger: logging.Logger = logging.getLogger(__name__)
-        self._PATH_TOKEN_RE = re.compile(r"([^.\[\]]+)|\[(\d+)]")
         self._ALLOWED_EXTENSIONS: tuple[str, ...] = (".yaml", ".yml")
 
     @staticmethod
@@ -129,12 +127,14 @@ class YAMLParser(Parser):
 
     def clone(self, data: ParseResult, target_locale: str | None = None) -> ParseResult:
         cloned_document = deepcopy(data.document)
-        cloned_units = []
 
-        for unit in data.units:
-            unit_container, leaf_key = self._resolve_unit(cloned_document, unit.key)
+        rebuilt_units: list[TranslationUnit] = []
+        self._walk(cloned_document, prefix="", units=rebuilt_units, excluded_keys=set())
+        rebuilt_by_key = {unit.key: unit for unit in rebuilt_units}
 
-            cloned_units.append(unit.model_copy(update={"write_back": self._make_write_back(unit_container, leaf_key)}))
+        cloned_units = [
+            unit.model_copy(update={"write_back": rebuilt_by_key[unit.key].write_back}) for unit in data.units
+        ]
 
         return ParseResult(
             source_path=data.source_path,
@@ -142,13 +142,3 @@ class YAMLParser(Parser):
             document=cloned_document,
             save=self._make_save(cloned_document),
         )
-
-    def _resolve_unit(self, document: Any, key: str) -> tuple[Any, str | int]:
-        tokens = self._PATH_TOKEN_RE.findall(key)
-        parts: list[str | int] = [char if char else int(idx) for char, idx in tokens]
-        container = document
-
-        for part in parts[:-1]:
-            container = container[part]
-
-        return container, parts[-1]

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- JSON and YAML: a key that contains a dot, such as `"home.title"` in a flat file, no longer stops the run. YAML keys read as booleans, such as `yes:` and `no:`, are translated in place instead of being added again as `'True':` and `'False':`.
+- Android strings and XLIFF: text with an escaped character, such as `Terms &amp; Conditions`, is written correctly. It used to fail after the provider had translated it, so the file was not written and the text was paid for again on the next run.
+- Android strings, XLIFF and .NET resx: comments before or after the root element, such as a license header, are kept.
+
 ## [0.1.1] - 2026-09-24
 
 ### Fixed

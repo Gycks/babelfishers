@@ -196,6 +196,16 @@ class TestYAMLParserClone:
 
         assert cloned.document["items"] == ["x", "translated"]
 
+    def test_clone_write_back_targets_keys_yaml_reads_as_booleans(self, parser, write_raw_yaml):
+        source = write_raw_yaml("en:\n  yes: Agree\n  no: Decline\n")
+        original = parser.parse(source, [])
+        cloned = parser.clone(original)
+
+        for unit in cloned.units:
+            unit.write_back(unit.source_text.upper())
+
+        assert cloned.document == {"en": {True: "AGREE", False: "DECLINE"}}
+
     def test_clone_of_empty_units_list_returns_empty_units_list(self, parser, write_yaml):
         source = write_yaml({})
         original = parser.parse(source, [])
