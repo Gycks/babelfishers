@@ -27,6 +27,13 @@ dependencies = [
     "google-genai (>=2.24.0,<3.0.0)"
 ]
 
+[project.urls]
+Homepage = "https://gycks.github.io/babelfishers/"
+Documentation = "https://gycks.github.io/babelfishers/"
+Repository = "https://github.com/Gycks/babelfishers"
+Issues = "https://github.com/Gycks/babelfishers/issues"
+Changelog = "https://gycks.github.io/babelfishers/changelog/"
+
 [project.scripts]
 babelfishers = "babelfishers.cli.main:main"
 
