@@ -1,9 +1,9 @@
 import hashlib
 import os
 import stat
-import tempfile
 from collections.abc import Callable
 from pathlib import Path
+from secrets import token_hex
 
 from babelfishers import APPLICATION_NAME
 
@@ -44,16 +44,6 @@ def get_app_config_storage_path() -> Path:
     return path.joinpath(f"{APPLICATION_NAME}.toml")
 
 
-def _file_mode_for(destination: Path) -> int:
-    """The mode `destination` has, or the one a newly created file would get."""
-    if destination.exists():
-        return stat.S_IMODE(destination.stat().st_mode)
-
-    umask = os.umask(0)
-    os.umask(umask)
-    return 0o666 & ~umask
-
-
 def atomic_write(destination: Path, writer: Callable[[Path], object]) -> None:
     """
     Writes to a temp file in the destination's own directory, then atomically
@@ -61,14 +51,13 @@ def atomic_write(destination: Path, writer: Callable[[Path], object]) -> None:
     or half-written file at `destination`.
     """
     destination.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp_name = tempfile.mkstemp(dir=destination.parent, prefix=f".{destination.name}.", suffix=".tmp")
-    os.close(fd)
-    tmp_path = Path(tmp_name)
+    tmp_path = destination.with_name(f".{destination.name}.{token_hex(8)}.tmp")
+    os.close(os.open(tmp_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666))
 
     try:
         writer(tmp_path)
-        # `mkstemp` creates the temp file as owner-only (0600), which the rename would carry over.
-        tmp_path.chmod(_file_mode_for(destination))
+        if destination.exists():
+            tmp_path.chmod(stat.S_IMODE(destination.stat().st_mode))
         os.replace(tmp_path, destination)
     except BaseException:
         tmp_path.unlink(missing_ok=True)

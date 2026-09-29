@@ -55,6 +55,14 @@ class TestAtomicWrite:
 
         assert stat.S_IMODE(destination.stat().st_mode) == 0o644
 
+    def test_never_changes_the_process_umask(self, tmp_path, monkeypatch):
+        def _fail(_: int) -> int:
+            raise AssertionError("os.umask changes the mode of files other threads create")
+
+        monkeypatch.setattr(os, "umask", _fail)
+
+        atomic_write(tmp_path / "new.txt", lambda tmp: tmp.write_text("hello", encoding="utf-8"))
+
     def test_leaves_the_original_file_untouched_when_the_writer_raises(self, tmp_path):
         destination = tmp_path / "out.txt"
         destination.write_text("original", encoding="utf-8")
