@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Any
+from xml.sax.saxutils import escape
 
 from lxml import etree
 
@@ -23,7 +24,10 @@ def parse_xml_string(text: str) -> Any:
 
 
 def serialize_xml(root: Any) -> str:
-    body = etree.tostring(root, encoding="unicode")
+    before_root = reversed(list(root.itersiblings(preceding=True)))
+    after_root = root.itersiblings()
+    nodes = [*before_root, root, *after_root]
+    body = "\n".join(etree.tostring(node, encoding="unicode") for node in nodes)
     return f'<?xml version="1.0" encoding="utf-8"?>\n{body}\n'
 
 
@@ -33,8 +37,11 @@ def inner_xml(element: Any) -> str:
     elements, e.g. Android's `<xliff:g>` or XLIFF's `<g>`/`<x/>`) into one
     string, so translating it doesn't truncate at the first inline tag the
     way `element.text` alone would.
+
+    The leading text is escaped like the serialized children already are, so
+    the whole string is one valid fragment that `set_inner_xml` can parse back.
     """
-    parts = [element.text or ""]
+    parts = [escape(element.text or "")]
     parts.extend(etree.tostring(child, encoding="unicode") for child in element)
     return "".join(parts)
 

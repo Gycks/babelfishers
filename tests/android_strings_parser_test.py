@@ -148,6 +148,15 @@ class TestAndroidStringsParserParse:
 
         assert "<!-- section note -->" in destination.read_text(encoding="utf-8")
 
+    def test_preserves_xml_comments_before_the_root_on_save(self, parser, write_xml, tmp_path):
+        source = write_xml('<!-- license header --><resources><string name="title">Hello</string></resources>')
+        result = parser.parse(source, [])
+
+        destination = tmp_path / "out.xml"
+        result.save(destination)
+
+        assert "<!-- license header -->\n<resources>" in destination.read_text(encoding="utf-8")
+
     def test_writes_a_double_quoted_xml_declaration(self, parser, write_xml, tmp_path):
         source = write_xml('<resources><string name="title">Hello</string></resources>')
         result = parser.parse(source, [])
@@ -169,6 +178,18 @@ class TestAndroidStringsParserParse:
         assert result.units[0].source_text.startswith("Sent <xliff:g")
         assert result.units[0].source_text.endswith("</xliff:g> messages")
         assert "%d" in result.units[0].source_text
+
+    def test_escaped_ampersand_round_trips_through_write_back(self, parser, write_xml, tmp_path):
+        source = write_xml('<resources><string name="terms">Terms &amp; Conditions</string></resources>')
+        result = parser.parse(source, [])
+
+        result.units[0].write_back(result.units[0].source_text.replace("Terms", "Termes"))
+
+        destination = tmp_path / "out.xml"
+        result.save(destination)
+
+        assert result.units[0].source_text == "Terms &amp; Conditions"
+        assert "<string name=\"terms\">Termes &amp; Conditions</string>" in destination.read_text(encoding="utf-8")
 
     def test_write_back_with_inline_markup_round_trips_the_tag(self, parser, write_xml, tmp_path):
         source = write_xml(
