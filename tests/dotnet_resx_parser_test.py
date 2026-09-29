@@ -94,14 +94,19 @@ class TestDotNetResxParserParse:
         assert any("no <value>" in r.message for r in caplog.records)
         assert result.units == []
 
-    def test_duplicate_data_name_logs_a_warning(self, parser, write_resx, caplog):
+    def test_duplicate_data_name_translates_every_value_and_logs_a_warning(self, parser, write_resx, tmp_path, caplog):
         source = write_resx('<data name="dup"><value>first</value></data><data name="dup"><value>second</value></data>')
 
         with caplog.at_level(logging.WARNING):
-            result = parser.parse(source, [])
+            cloned = parser.clone(parser.parse(source, []))
+        for unit in cloned.units:
+            unit.write_back(unit.source_text.upper())
+        destination = tmp_path / "out.resx"
+        cloned.save(destination)
 
-        assert any("Duplicate resx data name" in r.message for r in caplog.records)
-        assert result.units[0].source_text == "second"
+        content = destination.read_text(encoding="utf-8")
+        assert '<data name="dup"><value>FIRST</value></data><data name="dup"><value>SECOND</value></data>' in content
+        assert any("Key 'dup' appears 2 times" in r.message for r in caplog.records)
 
     def test_preserves_xml_comments_on_save(self, parser, write_resx, tmp_path):
         source = write_resx('<!-- section note --><data name="Greeting"><value>Hello</value></data>')

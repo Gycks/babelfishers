@@ -5,7 +5,7 @@ from typing import Any
 
 from lxml import etree
 
-from babelfishers.core.parsers.parser import Parser
+from babelfishers.core.parsers.parser import Parser, excluded_keys_without_duplicates
 from babelfishers.core.parsers.registry import register
 from babelfishers.core.parsers.xml_support import inner_xml, parse_xml, parse_xml_string, serialize_xml, set_inner_xml
 from babelfishers.models.translation_resource import TranslationResourceType
@@ -31,7 +31,7 @@ class XLIFFParser(Parser):
 
     def _register_entry(
         self,
-        entries: dict[str, tuple[str, Any, str | None]],
+        entries: list[tuple[str, str, Any, str | None]],
         key: str,
         source_el: Any,
         target_el: Any,
@@ -43,17 +43,14 @@ class XLIFFParser(Parser):
             self._logger.warning(ConsoleFormatter.warning(f"Skipping unit '{key}' with no <source>"))
             return
 
-        if key in entries:
-            self._logger.warning(ConsoleFormatter.warning(f"Duplicate unit id '{key}', keeping last"))
-
         source_text = inner_xml(source_el)
         if target_el is None and source_text.strip():
             target_el = etree.SubElement(target_parent, qn("target"))
 
-        entries[key] = (source_text, target_el, note_text)
+        entries.append((key, source_text, target_el, note_text))
 
     def _collect_v1_units(
-        self, file_el: Any, qn: Callable[[str], str], file_prefix: str, entries: dict[str, tuple[str, Any, str | None]]
+        self, file_el: Any, qn: Callable[[str], str], file_prefix: str, entries: list[tuple[str, str, Any, str | None]]
     ) -> None:
         for trans_unit in file_el.iter(qn("trans-unit")):
             unit_id = trans_unit.get("id")
@@ -73,7 +70,7 @@ class XLIFFParser(Parser):
             )
 
     def _collect_v2_units(
-        self, file_el: Any, qn: Callable[[str], str], file_prefix: str, entries: dict[str, tuple[str, Any, str | None]]
+        self, file_el: Any, qn: Callable[[str], str], file_prefix: str, entries: list[tuple[str, str, Any, str | None]]
     ) -> None:
         for unit_el in file_el.iter(qn("unit")):
             unit_id = unit_el.get("id")
@@ -104,8 +101,8 @@ class XLIFFParser(Parser):
                     note_text,
                 )
 
-    def _collect_entries(self, root: Any, qn: Callable[[str], str]) -> dict[str, tuple[str, Any, str | None]]:
-        entries: dict[str, tuple[str, Any, str | None]] = {}
+    def _collect_entries(self, root: Any, qn: Callable[[str], str]) -> list[tuple[str, str, Any, str | None]]:
+        entries: list[tuple[str, str, Any, str | None]] = []
         version = root.get("version", "1.2")
         files = root.findall(qn("file"))
         multi_file = len(files) > 1
@@ -146,11 +143,20 @@ class XLIFFParser(Parser):
         root = parse_xml(source_path)
         qn = self._qualifier(root)
         entries = self._collect_entries(root, qn)
-        excluded = set(excluded_keys)
+        excluded = excluded_keys_without_duplicates(excluded_keys, self._build_units(entries, set()), self._logger)
+        units = self._build_units(entries, excluded)
 
+        self._logger.info(ConsoleFormatter.success(f"Successfully parsed source {source_path}"))
+        return ParseResult(
+            source_path=source_path, units=units, save=self._make_save(root), document=root, excluded_keys=excluded
+        )
+
+    def _build_units(
+        self, entries: list[tuple[str, str, Any, str | None]], excluded_keys: set[str]
+    ) -> list[TranslationUnit]:
         units: list[TranslationUnit] = []
-        for key, (source_text, target_el, context_hint) in entries.items():
-            if key in excluded or target_el is None or not source_text.strip():
+        for key, source_text, target_el, context_hint in entries:
+            if key in excluded_keys or target_el is None or not source_text.strip():
                 continue
 
             units.append(
@@ -163,24 +169,16 @@ class XLIFFParser(Parser):
                 )
             )
 
-        self._logger.info(ConsoleFormatter.success(f"Successfully parsed source {source_path}"))
-        return ParseResult(source_path=source_path, units=units, save=self._make_save(root), document=root)
+        return units
 
     def clone(self, data: ParseResult, target_locale: str | None = None) -> ParseResult:
         cloned_root = parse_xml_string(serialize_xml(data.document))
-        qn = self._qualifier(cloned_root)
-        entries = self._collect_entries(cloned_root, qn)
-
-        cloned_units = []
-        for unit in data.units:
-            _, target_el, _ = entries[unit.key]
-            if target_el is None:
-                raise ValueError(f"Cloned document is missing a <target> for unit '{unit.key}'")
-            cloned_units.append(unit.model_copy(update={"write_back": self._make_write_back(target_el)}))
+        entries = self._collect_entries(cloned_root, self._qualifier(cloned_root))
 
         return ParseResult(
             source_path=data.source_path,
-            units=cloned_units,
+            units=self._build_units(entries, data.excluded_keys),
             document=cloned_root,
             save=self._make_save(cloned_root),
+            excluded_keys=data.excluded_keys,
         )

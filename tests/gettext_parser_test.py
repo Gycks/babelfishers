@@ -74,13 +74,18 @@ class TestGettextParserParse:
 
         assert [u.key for u in result.units] == ["Hello"]
 
-    def test_duplicate_msgid_logs_a_warning(self, parser, write_po, caplog):
+    def test_duplicate_msgid_translates_every_entry_and_logs_a_warning(self, parser, write_po, tmp_path, caplog):
         source = write_po('msgid "Hello"\nmsgstr ""\n\nmsgid "Hello"\nmsgstr ""\n')
 
         with caplog.at_level(logging.WARNING):
-            parser.parse(source, [])
+            cloned = parser.clone(parser.parse(source, []))
+        for unit in cloned.units:
+            unit.write_back("Bonjour")
+        destination = tmp_path / "out.po"
+        cloned.save(destination)
 
-        assert any("Duplicate PO msgid" in r.message for r in caplog.records)
+        assert destination.read_text(encoding="utf-8").count('msgstr "Bonjour"') == 2
+        assert any("Key 'Hello' appears 2 times" in r.message for r in caplog.records)
 
     def test_unrecognized_syntax_logs_a_warning_and_is_dropped(self, parser, write_po, caplog):
         source = write_po('msgid "Hello"\nnot valid po syntax\nmsgstr ""\n')

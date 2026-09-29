@@ -4,7 +4,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from pathlib import Path
 
-from babelfishers.core.parsers.parser import Parser
+from babelfishers.core.parsers.parser import Parser, excluded_keys_without_duplicates
 from babelfishers.core.parsers.registry import register
 from babelfishers.models.translation_resource import TranslationResourceType
 from babelfishers.models.translations import ParseResult, TranslationUnit
@@ -71,10 +71,8 @@ class AppleStringsParser(Parser):
 
         return save
 
-    def _parse_document(self, raw_text: str) -> tuple[list[dict[str, str]], list[str | None]]:
+    def _parse_document(self, raw_text: str) -> list[dict[str, str]]:
         document: list[dict[str, str]] = []
-        context_hints: list[str | None] = []
-        pending_comments: list[str] = []
         cursor = 0
 
         for match in _TOKEN_RE.finditer(raw_text):
@@ -89,7 +87,6 @@ class AppleStringsParser(Parser):
             token = match.group(0)
             if token.startswith("/*") or token.startswith("//"):
                 document.append({"type": "comment", "text": token})
-                pending_comments.append(token.strip("/* \t\n").rstrip("*/").strip())
                 continue
 
             entry_match = _ENTRY_RE.match(token)
@@ -99,8 +96,6 @@ class AppleStringsParser(Parser):
             key = self._unescape(entry_match.group(1))
             value = self._unescape(entry_match.group(2))
             document.append({"type": "entry", "key": key, "value": value})
-            context_hints.append("\n".join(pending_comments) if pending_comments else None)
-            pending_comments = []
 
         trailing = raw_text[cursor:]
         if trailing.strip():
@@ -111,7 +106,7 @@ class AppleStringsParser(Parser):
             )
             document.append({"type": "raw", "text": trailing})
 
-        return document, context_hints
+        return document
 
     def parse(self, source_path: Path, excluded_keys: list[str]) -> ParseResult:
         self._logger.info(ConsoleFormatter.info(f"Parsing source {source_path}"))
@@ -123,24 +118,34 @@ class AppleStringsParser(Parser):
             raw_text = handle.read()
         newline = detect_newline(raw_text)
 
-        document, context_hints = self._parse_document(raw_text)
-        excluded = set(excluded_keys)
+        document = self._parse_document(raw_text)
+        document.append({"type": "meta", "newline": newline})
+        excluded = excluded_keys_without_duplicates(excluded_keys, self._build_units(document, set()), self._logger)
+        units = self._build_units(document, excluded)
 
-        seen_keys: set[str] = set()
+        self._logger.info(ConsoleFormatter.success(f"Successfully parsed source {source_path}"))
+        return ParseResult(
+            source_path=source_path,
+            units=units,
+            save=self._make_save(document),
+            document=document,
+            excluded_keys=excluded,
+        )
+
+    def _build_units(self, document: list[dict[str, str]], excluded_keys: set[str]) -> list[TranslationUnit]:
         units: list[TranslationUnit] = []
-        hint_index = 0
+        # The comments written above an entry are its context hint.
+        pending_comments: list[str] = []
         for entry in document:
+            if entry["type"] == "comment":
+                pending_comments.append(entry["text"].strip("/* \t\n").rstrip("*/").strip())
+                continue
             if entry["type"] != "entry":
                 continue
 
-            context_hint = context_hints[hint_index]
-            hint_index += 1
-
-            if entry["key"] in seen_keys:
-                self._logger.warning(ConsoleFormatter.warning(f"Duplicate .strings key '{entry['key']}', keeping last"))
-            seen_keys.add(entry["key"])
-
-            if entry["key"] in excluded or not entry["value"].strip():
+            context_hint = "\n".join(pending_comments) if pending_comments else None
+            pending_comments = []
+            if entry["key"] in excluded_keys or not entry["value"].strip():
                 continue
 
             units.append(
@@ -153,32 +158,15 @@ class AppleStringsParser(Parser):
                 )
             )
 
-        document.append({"type": "meta", "newline": newline})
-
-        self._logger.info(ConsoleFormatter.success(f"Successfully parsed source {source_path}"))
-        return ParseResult(source_path=source_path, units=units, save=self._make_save(document), document=document)
+        return units
 
     def clone(self, data: ParseResult, target_locale: str | None = None) -> ParseResult:
         cloned_document: list[dict[str, str]] = deepcopy(data.document)
 
-        index_by_key: dict[str, list[int]] = {}
-        for i, entry in enumerate(cloned_document):
-            if entry["type"] == "entry":
-                index_by_key.setdefault(entry["key"], []).append(i)
-
-        consumed: dict[str, int] = {}
-        cloned_units = []
-        for unit in data.units:
-            occurrence = consumed.get(unit.key, 0)
-            consumed[unit.key] = occurrence + 1
-            entry_index = index_by_key[unit.key][occurrence]
-            cloned_units.append(
-                unit.model_copy(update={"write_back": self._make_write_back(cloned_document[entry_index])})
-            )
-
         return ParseResult(
             source_path=data.source_path,
-            units=cloned_units,
+            units=self._build_units(cloned_document, data.excluded_keys),
             document=cloned_document,
             save=self._make_save(cloned_document),
+            excluded_keys=data.excluded_keys,
         )

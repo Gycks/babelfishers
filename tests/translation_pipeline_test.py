@@ -96,6 +96,38 @@ def _drops_placeholder_translator(engine: Engine, call_log: list | None = None):
     return _Translator
 
 
+def _quota_translator(engine: Engine, quota: int, call_log: list | None = None):
+    class _Translator(Translator):
+        def __init__(self) -> None:
+            super().__init__(engine)
+            self._translated = 0
+
+        def translate(self, data, source, target):
+            if call_log is not None:
+                call_log.append((engine, [unit.key for unit in data]))
+            for unit in data:
+                if self._translated == quota:
+                    raise RuntimeError("simulated quota exceeded")
+                unit.translated_text = unit.source_text.upper()
+                self._translated += 1
+            return data
+
+    return _Translator
+
+
+def _stripping_upper_translator(engine: Engine):
+    class _Translator(Translator):
+        def __init__(self) -> None:
+            super().__init__(engine)
+
+        def translate(self, data, source, target):
+            for unit in data:
+                unit.translated_text = unit.source_text.upper().strip()
+            return data
+
+    return _Translator
+
+
 def _mangled_then_clean_translator(engine: Engine):
     class _Translator(Translator):
         def __init__(self) -> None:
@@ -207,6 +239,27 @@ class TestTranslationPipelineWriteBackAndSave:
 
         assert save_calls == [destination]
 
+    def test_run_writes_the_source_edge_whitespace_around_a_cached_translation(self, tm_store, monkeypatch):
+        tm_store.store("Total:", "en", "fr", "TOTAL:", "deepl")
+        _register(monkeypatch, Engine.DeepL, _echo_translator(Engine.DeepL))
+
+        written = {}
+        pipeline = TranslationPipeline([Engine.DeepL], glossary=None, translation_store=tm_store)
+        parse_result = _parse_result([_unit("k1", "Total: ", written), _unit("k2", "\nTotal:\n", written)])
+        pipeline.run(parse_result, "en", "fr", Path("/tmp/out.json"))
+
+        assert written == {"k1": "TOTAL: ", "k2": "\nTOTAL:\n"}
+
+    def test_run_writes_the_source_edge_whitespace_the_provider_stripped(self, tm_store, monkeypatch):
+        _register(monkeypatch, Engine.DeepL, _stripping_upper_translator(Engine.DeepL))
+
+        written = {}
+        pipeline = TranslationPipeline([Engine.DeepL], glossary=None, translation_store=tm_store)
+        parse_result = _parse_result([_unit("k1", "  Total: ", written)])
+        pipeline.run(parse_result, "en", "fr", Path("/tmp/out.json"))
+
+        assert written == {"k1": "  TOTAL: "}
+
 
 class TestTranslationPipelineEngineRetryAndSwitch:
     def test_retries_same_engine_before_switching_when_translator_fails_once_then_succeeds(
@@ -268,6 +321,39 @@ class TestTranslationPipelineEngineRetryAndSwitch:
         assert written == {"k2": "Bonjour"}
         assert tm_store.lookup("Hello %s", "en", "fr") is None
         assert any("'k1' on every engine. Left untranslated" in r.message for r in caplog.records)
+
+    def test_keeps_the_units_translated_before_the_provider_ran_out_of_quota(self, tm_store, monkeypatch):
+        call_log = []
+        _register(monkeypatch, Engine.DeepL, _quota_translator(Engine.DeepL, quota=2, call_log=call_log))
+
+        written = {}
+        pipeline = TranslationPipeline([Engine.DeepL], glossary=None, translation_store=tm_store)
+        parse_result = _parse_result([_unit(f"k{n}", f"text {n}", written) for n in range(4)])
+        left_untranslated = pipeline.run(parse_result, "en", "fr", Path("/tmp/out.json"))
+
+        assert left_untranslated == 2
+        assert written == {"k0": "TEXT 0", "k1": "TEXT 1"}
+        assert tm_store.stats().total_entries == 2
+        assert call_log == [(Engine.DeepL, ["k0", "k1", "k2", "k3"]), (Engine.DeepL, ["k2", "k3"])]
+
+    def test_retry_after_a_provider_error_sends_only_the_units_not_yet_translated(self, tm_store, monkeypatch):
+        call_log = []
+        _register(monkeypatch, Engine.DeepL, _quota_translator(Engine.DeepL, quota=1, call_log=call_log))
+        _register(monkeypatch, Engine.GoogleTranslate, _echo_translator(Engine.GoogleTranslate, call_log))
+
+        written = {}
+        pipeline = TranslationPipeline(
+            [Engine.DeepL, Engine.GoogleTranslate], glossary=None, translation_store=tm_store
+        )
+        parse_result = _parse_result([_unit("k1", "Hello", written), _unit("k2", "Bye", written)])
+        pipeline.run(parse_result, "en", "fr", Path("/tmp/out.json"))
+
+        assert written == {"k1": "HELLO", "k2": "Bye"}
+        assert call_log == [
+            (Engine.DeepL, ["k1", "k2"]),
+            (Engine.DeepL, ["k2"]),
+            (Engine.GoogleTranslate, 1),
+        ]
 
     def test_retry_triggers_when_placeholder_restoration_fails_due_to_a_mangled_tag(self, tm_store, monkeypatch):
         _register(monkeypatch, Engine.DeepL, _mangled_then_clean_translator(Engine.DeepL))

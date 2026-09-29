@@ -18,7 +18,7 @@ class GlossaryGuard(ProtectionGuard):
 
     def protect(self, data: list[TranslationUnit]) -> list[TranslationUnit]:
         data_copy = deepcopy(data)
-        for unit in data_copy:
+        for position, unit in enumerate(data_copy):
             glossary_term = self._glossary.lookup(unit.source_text)
 
             if glossary_term:
@@ -54,7 +54,7 @@ class GlossaryGuard(ProtectionGuard):
                 unit.context_hint = existing + "\n".join(reversed(hints))
 
             if entries:
-                self._token_maps[unit.key] = entries
+                self._token_maps[position] = entries
 
             unit.source_text = text
         return data_copy

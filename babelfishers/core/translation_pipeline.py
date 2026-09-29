@@ -176,22 +176,30 @@ class TranslationPipeline:
                         )
                         dataset = glossary_guard.protect(protected_units)
 
-                    translations = translator.translate(
-                        dataset,
-                        source_locale,
-                        target_locale,
-                    )
+                    provider_error: Exception | None = None
+                    try:
+                        translator.translate(dataset, source_locale, target_locale)
+                    except Exception as exe:
+                        provider_error = exe
 
                     if glossary_guard:
-                        if not glossary_guard.restore(translations):
+                        if not glossary_guard.restore(dataset):
                             raise ValueError("Unable to restore translation units.")
 
-                    if not placeholder_guard.restore(translations):
+                    if not placeholder_guard.restore(dataset):
                         raise ValueError("Unable to restore translation units.")
 
-                    last_attempt_failed = False
-                    mismatched = []
-                    for i, translation in zip(pending, translations, strict=True):
+                    # Providers translate unit by unit, so the units finished before an error are kept
+                    # and only the rest is sent again.
+                    finished = [
+                        (i, unit)
+                        for i, unit in zip(pending, dataset, strict=True)
+                        if provider_error is None or unit.translated_text or unit.skip_translation
+                    ]
+
+                    finished_indices = {i for i, _ in finished}
+                    mismatched = [i for i in pending if i not in finished_indices]
+                    for i, translation in finished:
                         if translation.skip_translation or self._placeholders_match(
                             units[i].source_text, translation.translated_text, units[i].unit_type
                         ):
@@ -201,6 +209,10 @@ class TranslationPipeline:
                             rejected[i] = translation.translated_text
 
                     pending = mismatched
+                    if provider_error is not None:
+                        raise provider_error
+
+                    last_attempt_failed = False
                     if not pending:
                         return results
 
@@ -251,6 +263,17 @@ class TranslationPipeline:
     @classmethod
     def _placeholders_match(cls, source_text: str, translated_text: str, unit_type: TranslationResourceType) -> bool:
         return cls._placeholders(source_text, unit_type) == cls._placeholders(translated_text, unit_type)
+
+    @staticmethod
+    def _with_source_edge_whitespace(source_text: str, translated_text: str) -> str:
+        """
+        The memory matches entries ignoring edge whitespace and AI providers strip it,
+        so the output takes the source's leading and trailing whitespace, whatever
+        the translation came with.
+        """
+        leading = source_text[: len(source_text) - len(source_text.lstrip())]
+        trailing = source_text[len(source_text.rstrip()) :]
+        return f"{leading}{translated_text.strip()}{trailing}"
 
     def _warn_left_untranslated(self, unit: TranslationUnit, translated_text: str) -> None:
         self._logger.warning(
@@ -310,7 +333,7 @@ class TranslationPipeline:
 
         # Units left out by `_run_translate` keep the source file's value.
         for unit in cache_hits + [cache_misses[i] for i in sorted(translated_copies)]:
-            unit.write_back(unit.translated_text)
+            unit.write_back(self._with_source_edge_whitespace(unit.source_text, unit.translated_text))
 
         parse_result.save(destination_path)
 

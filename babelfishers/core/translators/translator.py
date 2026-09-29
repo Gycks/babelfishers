@@ -22,6 +22,9 @@ class Translator(ABC):
         Sets `translated_text` on each unit. The translation pipeline restores protected
         spans, checks the result and writes it back, so a translator never calls `write_back`.
 
+        When the provider fails partway, raise and leave `translated_text` on the units
+        already done: the pipeline keeps them and sends only the rest again.
+
         Args:
             data: Translation units to translate.
             source: The source language.

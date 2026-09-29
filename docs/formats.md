@@ -31,7 +31,7 @@ paths = ["i18n/[source]/*.po"]
 - Only text values are translated. Keys and structure are kept.
 - Empty values are skipped.
 - Placeholders in curly braces, such as `{name}` or `{0}`, are protected in every format. Some formats protect more. Each section below lists them.
-- If a key appears twice in a file, the last one is kept. Most formats also print a warning.
+- If a key appears more than once in a file, every value with that key is translated and a warning is printed. In JSON, YAML and ARB, a key written twice in the same object is read once, with its last value, as those formats define.
 
 ## JSON
 
@@ -41,6 +41,10 @@ paths = ["i18n/[source]/*.po"]
 - **Left alone.** Keys, numbers, booleans, `null` and empty strings.
 - **Placeholders protected.** printf style such as `%s` and `%d`, and anything in braces.
 - **Good to know.** Output uses two-space indentation. Non-ASCII characters are written as they are.
+
+!!! warning "Don't write the same path twice"
+
+    A key with dots and a nested key can name the same path. In `{"home.title": "Welcome", "home": {"title": "Hello"}}`, both values have the key `home.title`. Babel Fishers translates both and prints a warning. Your i18n library will likely read only one of them, and `excluded_keys` can't leave out just one (see [Leave content out](#leave-content-out)). Use one style for each path.
 
 ## HTML
 
@@ -59,6 +63,10 @@ paths = ["i18n/[source]/*.po"]
 - **Left alone.** Keys and values that are not strings.
 - **Placeholders protected.** Rails style `%{name}`, Symfony style `%name%`, and anything in braces.
 - **Good to know.** Key order is kept. Comments are not kept in the translated files.
+
+!!! warning "Don't write the same path twice"
+
+    As in [JSON](#json), a key with dots such as `home.title:` and a nested `home:` with `title:` under it name the same path. Both are translated, with a warning.
 
 ## Java properties
 
@@ -106,6 +114,10 @@ paths = ["i18n/[source]/*.po"]
 - **Placeholders protected.** Anything in braces, including ICU arguments.
 - **Good to know.** Output uses two-space indentation.
 
+!!! warning "Don't write the same path twice"
+
+    As in [JSON](#json), two entries can name the same path. Each plural category also gets its own key, so a plural `count` gives `count.one` and `count.other`, and a separate `"count.one"` entry has the same key. Both are translated, with a warning.
+
 ## XLIFF
 
 **Config key:** `xliff`
@@ -145,3 +157,5 @@ The way you write a key depends on the format.
 | gettext | The `msgid` text. Use `msgid[0]`, `msgid[1]` and so on for plural forms, numbered as in the target's `Plural-Forms`. |
 | XLIFF | The unit `id`. Use `file-id:unit-id` when a document has several files. |
 | HTML | Not used. Mark elements in the source instead. |
+
+If a key appears more than once in a file, an `excluded_keys` entry for it is ignored and every value with that key is translated. Babel Fishers can't tell which of the values you mean, so it prints a warning instead of guessing. To keep one of them untranslated, give it a key of its own.

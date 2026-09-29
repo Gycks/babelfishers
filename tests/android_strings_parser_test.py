@@ -130,14 +130,18 @@ class TestAndroidStringsParserParse:
         assert any("no 'quantity'" in r.message for r in caplog.records)
         assert result.units == []
 
-    def test_duplicate_string_name_logs_a_warning(self, parser, write_xml, caplog):
+    def test_duplicate_string_name_translates_every_value_and_logs_a_warning(self, parser, write_xml, tmp_path, caplog):
         source = write_xml('<resources><string name="dup">first</string><string name="dup">second</string></resources>')
 
         with caplog.at_level(logging.WARNING):
-            result = parser.parse(source, [])
+            cloned = parser.clone(parser.parse(source, []))
+        for unit in cloned.units:
+            unit.write_back(unit.source_text.upper())
+        destination = tmp_path / "out.xml"
+        cloned.save(destination)
 
-        assert any("Duplicate Android string key" in r.message for r in caplog.records)
-        assert result.units[0].source_text == "second"
+        assert '<string name="dup">FIRST</string><string name="dup">SECOND</string>' in destination.read_text()
+        assert any("Key 'dup' appears 2 times" in r.message for r in caplog.records)
 
     def test_preserves_xml_comments_on_save(self, parser, write_xml, tmp_path):
         source = write_xml('<resources><!-- section note --><string name="title">Hello</string></resources>')

@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - JSON and YAML: a key that contains a dot, such as `"home.title"` in a flat file, no longer stops the run. YAML keys read as booleans, such as `yes:` and `no:`, are translated in place instead of being added again as `'True':` and `'False':`.
 - Android strings and XLIFF: text with an escaped character, such as `Terms &amp; Conditions`, is written correctly. It used to fail after the provider had translated it, so the file was not written and the text was paid for again on the next run.
 - Android strings, XLIFF and .NET resx: comments before or after the root element, such as a license header, are kept.
+- A key that appears more than once in a file, such as a repeated Java properties or Apple strings key, or a flat `"home.title"` next to a nested `home` with a `title` in JSON, YAML or ARB, no longer mixes up translations. Every value with that key is translated in its own place and a warning is printed. Before, a translation could be written into the wrong value, or given the placeholders of another entry with the same key. An `excluded_keys` entry for such a key is ignored, with a warning, since it can't tell the values apart.
 
 ## [0.1.1] - 2026-09-24
 

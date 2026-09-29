@@ -4,7 +4,7 @@ from collections.abc import Callable
 from copy import deepcopy
 from pathlib import Path
 
-from babelfishers.core.parsers.parser import Parser
+from babelfishers.core.parsers.parser import Parser, excluded_keys_without_duplicates
 from babelfishers.core.parsers.registry import register
 from babelfishers.models.translation_resource import TranslationResourceType
 from babelfishers.models.translations import ParseResult, TranslationUnit
@@ -135,11 +135,7 @@ class JavaPropertiesParser(Parser):
             raw_text = handle.read()
         newline = detect_newline(raw_text)
 
-        excluded = set(excluded_keys)
-        seen_keys: set[str] = set()
         document: list[dict[str, str]] = []
-        units: list[TranslationUnit] = []
-
         for line in self._read_logical_lines(raw_text):
             stripped = line.lstrip()
             if not stripped or stripped[0] in "#!":
@@ -147,51 +143,40 @@ class JavaPropertiesParser(Parser):
                 continue
 
             key, value = self._split_line(stripped)
-            if key in seen_keys:
-                self._logger.warning(ConsoleFormatter.warning(f"Duplicate properties key '{key}', keeping last"))
-            seen_keys.add(key)
-
-            entry: dict[str, str] = {"type": "entry", "key": key, "value": value}
-            document.append(entry)
-
-            if key in excluded or not value.strip():
-                continue
-
-            units.append(
-                TranslationUnit(
-                    unit_type=TranslationResourceType.JAVA_PROPERTIES,
-                    key=key,
-                    source_text=value,
-                    write_back=self._make_write_back(entry),
-                )
-            )
+            document.append({"type": "entry", "key": key, "value": value})
 
         document.append({"type": "meta", "newline": newline})
+        excluded = excluded_keys_without_duplicates(excluded_keys, self._build_units(document, set()), self._logger)
+        units = self._build_units(document, excluded)
 
         self._logger.info(ConsoleFormatter.success(f"Successfully parsed source {source_path}"))
-        return ParseResult(source_path=source_path, units=units, save=self._make_save(document), document=document)
+        return ParseResult(
+            source_path=source_path,
+            units=units,
+            save=self._make_save(document),
+            document=document,
+            excluded_keys=excluded,
+        )
+
+    def _build_units(self, document: list[dict[str, str]], excluded_keys: set[str]) -> list[TranslationUnit]:
+        return [
+            TranslationUnit(
+                unit_type=TranslationResourceType.JAVA_PROPERTIES,
+                key=entry["key"],
+                source_text=entry["value"],
+                write_back=self._make_write_back(entry),
+            )
+            for entry in document
+            if entry["type"] == "entry" and entry["key"] not in excluded_keys and entry["value"].strip()
+        ]
 
     def clone(self, data: ParseResult, target_locale: str | None = None) -> ParseResult:
         cloned_document: list[dict[str, str]] = deepcopy(data.document)
 
-        index_by_key: dict[str, list[int]] = {}
-        for i, entry in enumerate(cloned_document):
-            if entry["type"] == "entry":
-                index_by_key.setdefault(entry["key"], []).append(i)
-
-        consumed: dict[str, int] = {}
-        cloned_units = []
-        for unit in data.units:
-            occurrence = consumed.get(unit.key, 0)
-            consumed[unit.key] = occurrence + 1
-            entry_index = index_by_key[unit.key][occurrence]
-            cloned_units.append(
-                unit.model_copy(update={"write_back": self._make_write_back(cloned_document[entry_index])})
-            )
-
         return ParseResult(
             source_path=data.source_path,
-            units=cloned_units,
+            units=self._build_units(cloned_document, data.excluded_keys),
             document=cloned_document,
             save=self._make_save(cloned_document),
+            excluded_keys=data.excluded_keys,
         )

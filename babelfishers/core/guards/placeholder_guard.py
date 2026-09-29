@@ -13,7 +13,7 @@ class PlaceholderGuard(ProtectionGuard):
 
     def protect(self, data: list[TranslationUnit]) -> list[TranslationUnit]:
         data_copy = deepcopy(data)
-        for unit in data_copy:
+        for position, unit in enumerate(data_copy):
             spans = find_placeholders(unit.source_text, unit.unit_type)
             if not spans:
                 continue
@@ -29,7 +29,7 @@ class PlaceholderGuard(ProtectionGuard):
                 text = text[: span.start] + wrapped + text[span.end :]
 
             if entries:
-                self._token_maps[unit.key] = entries
+                self._token_maps[position] = entries
                 unit.source_text = text
 
         return data_copy
