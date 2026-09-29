@@ -83,7 +83,7 @@ paths = ["i18n/[source]/*.po"]
 
 - **Translated.** `<string>` elements, the items of `<string-array>`, and the items of `<plurals>`.
 - **Left alone.** Anything marked `translatable="false"`.
-- **Placeholders protected.** printf style, inline tags such as `<xliff:g>`, and anything in braces.
+- **Placeholders protected.** printf style, inline tags such as `<xliff:g>`, XML entities such as `&amp;` and `&lt;`, and anything in braces.
 - **Good to know.** Text that mixes plain words with inline tags is translated as one piece.
 
 ## gettext
@@ -124,7 +124,7 @@ paths = ["i18n/[source]/*.po"]
 
 - **Translated.** The `<source>` text of each unit. The result is written to `<target>`. A `<target>` is created if the unit has none.
 - **Left alone.** Everything else in the document.
-- **Placeholders protected.** Inline tags such as `<g>`, `<x/>` and `<ph>`, printf style, and anything in braces.
+- **Placeholders protected.** Inline tags such as `<g>`, `<x/>` and `<ph>`, XML entities such as `&amp;` and `&lt;`, printf style, and anything in braces.
 - **Good to know.** Version 1.2 and version 2 are both supported. Notes are sent to the provider as context. Files with several `<file>` elements are supported.
 
 ## .NET resx

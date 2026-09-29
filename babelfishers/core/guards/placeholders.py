@@ -26,17 +26,21 @@ _STRINGSDICT_SPECIFIER = re.compile(r"%(?:\d+\$)?#@[A-Za-z_]\w*@")
 _INLINE_XML_TAG_PAIR = re.compile(r"<([\w:.-]+)(?:\s[^>]*)?>.*?</\1>", re.DOTALL)
 _INLINE_XML_SELF_CLOSING_TAG = re.compile(r"<[\w:.-]+(?:\s[^>]*)?/>")
 
+# XML entities in that mixed content, such as &amp;, &lt; or &#169;. A provider can
+# decode them into a bare & or <, which the XML write-back can't parse.
+_XML_ENTITY = re.compile(r"&(?:[A-Za-z_][\w.-]*|#\d+|#x[0-9A-Fa-f]+);")
+
 
 FORMAT_CATEGORIES: dict[TranslationResourceType, list[re.Pattern[str]]] = {
     TranslationResourceType.HTML: [],
     TranslationResourceType.JSON: [_PRINTF],
     TranslationResourceType.YAML: [_RAILS_NAMED, _SYMFONY_PERCENT],
     TranslationResourceType.JAVA_PROPERTIES: [_PRINTF],
-    TranslationResourceType.ANDROID_STRINGS: [_INLINE_XML_TAG_PAIR, _INLINE_XML_SELF_CLOSING_TAG, _PRINTF],
+    TranslationResourceType.ANDROID_STRINGS: [_INLINE_XML_TAG_PAIR, _INLINE_XML_SELF_CLOSING_TAG, _XML_ENTITY, _PRINTF],
     TranslationResourceType.GETTEXT: [_PRINTF, _PYTHON_PERCENT_NAMED],
     # The stringsdict reference goes first: `_PRINTF` would otherwise claim its `%#@` prefix and leave the name exposed.
     TranslationResourceType.APPLE_STRINGS: [_STRINGSDICT_SPECIFIER, _XCSTRINGS_ARG, _PRINTF],
     TranslationResourceType.FLUTTER_ARB: [],
-    TranslationResourceType.XLIFF: [_INLINE_XML_TAG_PAIR, _INLINE_XML_SELF_CLOSING_TAG, _PRINTF],
+    TranslationResourceType.XLIFF: [_INLINE_XML_TAG_PAIR, _INLINE_XML_SELF_CLOSING_TAG, _XML_ENTITY, _PRINTF],
     TranslationResourceType.DOTNET_RESX: [],
 }

@@ -138,3 +138,16 @@ class TestPlaceholderGuardRestore:
 
         assert all_clean is True
         assert [unit.translated_text for unit in protected] == ["Sent {name} {count} files", "Got {count} from {name}"]
+
+    def test_restores_an_xml_entity_the_provider_decoded(self):
+        guard = PlaceholderGuard(Engine.DeepL)
+        unit = TranslationUnit(
+            unit_type=T.ANDROID_STRINGS, key="terms", source_text="Terms &amp; Conditions", write_back=_noop_write_back
+        )
+        protected = guard.protect([unit])
+        protected[0].translated_text = protected[0].source_text.replace("&amp;", "&").replace("Terms", "Termes")
+
+        all_clean = guard.restore(protected)
+
+        assert all_clean is True
+        assert protected[0].translated_text == "Termes &amp; Conditions"

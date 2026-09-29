@@ -69,6 +69,14 @@ class TestFindPlaceholdersInlineXmlTags:
         spans = find_placeholders('Hello <g id="1">world</g>!', T.JSON)
         assert spans == []
 
+    def test_finds_named_and_numeric_xml_entities(self):
+        spans = find_placeholders("Terms &amp; Conditions &lt; &#169; &#x27;", T.XLIFF)
+        assert [s.matched_text for s in spans] == ["&amp;", "&lt;", "&#169;", "&#x27;"]
+
+    def test_entity_inside_an_inline_tag_stays_part_of_the_tag(self):
+        spans = find_placeholders('Tom <xliff:g id="n">&amp;</xliff:g> Jerry &amp; co', T.ANDROID_STRINGS)
+        assert [s.matched_text for s in spans] == ['<xliff:g id="n">&amp;</xliff:g>', "&amp;"]
+
 
 class TestFindPlaceholdersIcuBraceScan:
     def test_finds_balanced_icu_brace_placeholder(self):
