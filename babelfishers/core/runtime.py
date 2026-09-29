@@ -61,15 +61,17 @@ class Runtime:
         """
         Translate every source file and target locale that is stale, then record the run.
 
-        Locales run concurrently. Whatever completed is recorded in the run lock even if another
-        locale fails, so a re-run does not translate it again. Run lock entries for files or
-        locales that are no longer part of the project are dropped.
+        Locales run concurrently. A locale that fails doesn't stop the others: whatever completed
+        is recorded in the run lock, so a re-run does not translate it again. Run lock entries for
+        files or locales that are no longer part of the project are dropped.
 
         Returns:
-            What the run changed. `translated` lists the target files that were written. `state`
+            What the run changed. `translated` lists the target files that were translated completely.
+            `incomplete` lists the ones left with untranslated text or not written at all, because a
+            provider failed. `state`
             lists the run lock, whenever it was rewritten (files were translated or stale entries
             were dropped), and the translation memory database, whenever files were translated. The
-            database is checkpointed first, so the main file is complete on its own. Both lists are
+            database is checkpointed first, so the main file is complete on its own. The lists are
             empty when nothing changed.
         """
         tm_store = TMStore(self._tm_store_path)
@@ -77,7 +79,7 @@ class Runtime:
         self._log_up_to_date(plans)
 
         run_lock_entries: list[RunLockEntry] = []
-        incomplete: list[tuple[str, str]] = []
+        incomplete_jobs: list[_StaleJob] = []
         translated: list[Path] = []
 
         try:
@@ -90,22 +92,23 @@ class Runtime:
                     job = futures[future]
                     try:
                         entry = future.result()
-                        if entry is None:
-                            incomplete.append((str(job.plan.source_path), job.plan.locale))
-                        else:
-                            run_lock_entries.append(entry)
-                        translated.append(job.plan.destination.resolve())
                     except Exception as exe:
                         self._logger.exception(
                             ConsoleFormatter.error(f"{self._label(job)} -> Pipeline failed"), exc_info=exe
                         )
-                        raise
+                        entry = None
+
+                    if entry is None:
+                        incomplete_jobs.append(job)
+                    else:
+                        run_lock_entries.append(entry)
+                        translated.append(job.plan.destination.resolve())
         finally:
             # Best-effort: whatever succeeded before a failure is still recorded,
             # so a re-run doesn't re-translate files that already completed.
             self._run_lock_store.create(run_lock_entries)
             # A file with untranslated units stays stale, even if an older run had completed it.
-            self._run_lock_store.discard(incomplete)
+            self._run_lock_store.discard([(str(job.plan.source_path), job.plan.locale) for job in incomplete_jobs])
             # Entries for files or locales that left the project would otherwise stay forever.
             orphans_removed = self._run_lock_store.remove_orphans(
                 {(str(plan.source_path), plan.locale) for plan in plans}
@@ -118,7 +121,8 @@ class Runtime:
         if translated or orphans_removed:
             state.append(self._run_lock_store.storage_path.resolve())
 
-        return RunResult(translated=translated, state=state)
+        incomplete = [job.plan.destination.resolve() for job in incomplete_jobs]
+        return RunResult(translated=translated, incomplete=incomplete, state=state)
 
     def refresh_run_lock(self) -> tuple[int, int]:
         """

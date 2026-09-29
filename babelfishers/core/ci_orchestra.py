@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 
+from babelfishers.core.ci_runners.errors import CIError
 from babelfishers.core.ci_runners.runner import CIRunnerFactory
 from babelfishers.core.runtime import Runtime
 from babelfishers.models.app_config import AppConfig
@@ -27,6 +28,13 @@ class CIOrchestra:
         runner.check_context(options)
 
         run_result = self._translation_runtime.orchestrate_translation_workflow()
-        if run_result.empty:
-            return
-        runner.publish(run_result.paths, options)
+        # Files a provider failed on are left out, so the pull request never carries untranslated text.
+        if not run_result.empty:
+            runner.publish(run_result.paths, options)
+
+        if run_result.incomplete:
+            files = ", ".join(str(path) for path in run_result.incomplete)
+            raise CIError(
+                f"Not published because a provider failed on them: {files}. Their translations so far are kept "
+                "in the translation memory, and the next run translates only what is missing."
+            )

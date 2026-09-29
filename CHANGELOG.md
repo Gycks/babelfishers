@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Android strings and XLIFF: XML entities such as `&amp;` and `&lt;` are protected like placeholders, so the provider can't turn them into a bare `&` or `<`. Such a translation used to fail the whole file, and every string in it was paid for again on the next run.
 - A key that appears more than once in a file, such as a repeated Java properties or Apple strings key, or a flat `"home.title"` next to a nested `home` with a `title` in JSON, YAML or ARB, no longer mixes up translations. Every value with that key is translated in its own place and a warning is printed. Before, a translation could be written into the wrong value, or given the placeholders of another entry with the same key. An `excluded_keys` entry for such a key is ignored, with a warning, since it can't tell the values apart.
 
+### Changed
+- `ci` publishes only the files that were translated completely. A file a provider failed on is left out of the pull request, and the job then fails with an error that names it. The translation memory still keeps what was translated for it. If the provider failed on every file, nothing is published.
+- When a provider fails on one file, the other files are still translated, and `translate` and `ci` end with an error that names the files it failed on. Before, the run stopped, and in CI the other files' translations were not published.
+
 ## [0.1.1] - 2026-09-24
 
 ### Fixed

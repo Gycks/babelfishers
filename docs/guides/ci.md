@@ -146,8 +146,10 @@ For GitLab, use a pipeline for merge requests and make sure that the checkout is
 
 The commit holds these files.
 
-- The translated files.
+- The translated files, but only those translated completely.
 - The translation memory and the run record in `.babelfishers`, when they changed. They are added even if your `.gitignore` lists them. That way the memory stays current in your repository.
+
+If a provider fails on a file, for example because the quota ran out, that file is left out, so a pull request never holds text in the source language. The other files are published, and the memory keeps what was already translated for the file left out. The job then fails with an error that names the files left out. If the provider failed on every file, nothing is published. The next run translates only what is missing.
 
 The commit is made by `Babel Fishers <bot@babelfishers.local>`. Git hooks are skipped.
 
@@ -190,5 +192,6 @@ Two other cases end the run without an error. The message is a warning.
 | Could not tell which branch is running | Run the job on a branch, not on a tag. |
 | An API call failed with HTTP 401 or 403 | Check that the token is valid and has the scopes listed above. |
 | A git push failed | The token may lack write access, or the branch may be protected. |
+| Not published because a provider failed on them | The other files were published. Fix the provider problem, such as the key or the quota, and run again. See [Translation providers](providers.md). |
 
 See the [CLI reference](../reference/cli.md) for every option.

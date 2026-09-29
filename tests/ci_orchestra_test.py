@@ -74,6 +74,27 @@ class TestCIOrchestra:
         assert runtime.runs == 1
         assert runner.published == [(result.paths, _OPTIONS)]
 
+    def test_publishes_only_the_complete_files_then_fails_on_the_incomplete_ones(self, monkeypatch, tmp_path):
+        runner = _Runner()
+        result = RunResult(
+            translated=[tmp_path / "fr.json"], incomplete=[tmp_path / "de.json"], state=[tmp_path / "run.lock"]
+        )
+        orchestra, _ = _orchestra(monkeypatch, runner, result)
+
+        with pytest.raises(CIError, match="de.json"):
+            orchestra.run(_OPTIONS)
+
+        assert runner.published == [([tmp_path / "fr.json", tmp_path / "run.lock"], _OPTIONS)]
+
+    def test_publishes_nothing_and_fails_when_every_file_is_incomplete(self, monkeypatch, tmp_path):
+        runner = _Runner()
+        orchestra, _ = _orchestra(monkeypatch, runner, RunResult(incomplete=[tmp_path / "fr.json"]))
+
+        with pytest.raises(CIError, match="fr.json"):
+            orchestra.run(_OPTIONS)
+
+        assert runner.published == []
+
     def test_rejects_options_that_do_not_fit_the_run_before_anything_is_translated(self, monkeypatch):
         runner = _Runner(context_error=CIError("duplicate"))
         orchestra, runtime = _orchestra(monkeypatch, runner)

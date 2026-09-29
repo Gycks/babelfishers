@@ -93,7 +93,7 @@ The provider damaged a protected term or placeholder. Babel Fishers tries again 
 
 ### The translation pipeline failed
 
-Every attempt failed, with every provider you set. The messages above this one give the cause. Fix it and run the command again.
+Every attempt failed, with every provider you set. The messages above this one give the cause. The other files are still translated, and the command ends with an error that names the files the provider failed on. Fix the cause and run the command again.
 
 ## Results
 

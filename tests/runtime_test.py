@@ -152,7 +152,7 @@ class TestRuntimeOrchestration:
 
         assert call_log == [(Engine.GoogleTranslate, "fr")]
 
-    def test_orchestrate_raises_when_one_locale_job_fails_but_other_locale_jobs_still_complete(
+    def test_orchestrate_reports_a_failed_locale_as_incomplete_while_other_locales_complete(
         self, write_json, tmp_path, monkeypatch
     ):
         write_json("locales/en/messages.json", {"greeting": "Hello"})
@@ -160,10 +160,10 @@ class TestRuntimeOrchestration:
 
         resources = _resources({"paths": ["locales/[source]/messages.json"]})
         config = _config(resources, ["fr", "de"])
+        result = Runtime(config, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
 
-        with pytest.raises(ValueError, match="translation pipeline failed"):
-            Runtime(config, db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
-
+        assert result.translated == [(tmp_path / "locales/fr/messages.json").resolve()]
+        assert result.incomplete == [(tmp_path / "locales/de/messages.json").resolve()]
         assert json.loads((tmp_path / "locales/fr/messages.json").read_text()) == {"greeting": "[fr] Hello"}
         assert not (tmp_path / "locales/de/messages.json").exists()
 
@@ -288,8 +288,10 @@ class TestRuntimeRunLockSkipping:
 
         _register(monkeypatch, Engine.DeepL, transform=transform, call_log=call_log)
         resources = _resources({"paths": ["locales/[source]/messages.json"]})
-        Runtime(_config(resources, ["fr"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+        result = Runtime(_config(resources, ["fr"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
 
+        assert result.translated == []
+        assert result.incomplete == [(tmp_path / "locales/fr/messages.json").resolve()]
         assert json.loads((tmp_path / "locales/fr/messages.json").read_text()) == {
             "greeting": "Hello {name}",
             "farewell": "[fr] Bye",

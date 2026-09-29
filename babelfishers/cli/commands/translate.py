@@ -1,5 +1,6 @@
 import click
 
+from babelfishers.cli.errors import CliError
 from babelfishers.cli.project import load_app_config
 from babelfishers.cli.reports import render_dry_run
 
@@ -15,4 +16,10 @@ def translate(dry_run: bool) -> None:
         render_dry_run(runner.plan())
         return
 
-    runner.orchestrate_translation_workflow()
+    result = runner.orchestrate_translation_workflow()
+    if result.incomplete:
+        files = ", ".join(str(path) for path in result.incomplete)
+        raise CliError(
+            f"A provider failed on {files}. What was translated is written and kept in the translation memory, "
+            "and the next run translates only what is missing."
+        )

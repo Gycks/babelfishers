@@ -61,6 +61,29 @@ class TestTranslateDryRun:
         assert "1 to translate, 1 up to date" in result.output
 
 
+class TestTranslateRun:
+    def test_exits_with_an_error_after_writing_the_locales_a_provider_did_not_fail_on(self, project, monkeypatch):
+        class _FailsOnGerman(Translator):
+            def __init__(self) -> None:
+                super().__init__(Engine.DeepL)
+
+            def translate(self, data, source, target):
+                if target == "de":
+                    raise RuntimeError("quota exceeded")
+                for unit in data:
+                    unit.translated_text = f"[{target}] {unit.source_text}"
+                return data
+
+        monkeypatch.setitem(translators_registry, Engine.DeepL, _FailsOnGerman)
+
+        result = CliRunner().invoke(cli, ["translate"])
+
+        assert result.exit_code == 1
+        assert "A provider failed on" in result.output
+        assert "locales/de/messages.json" in result.output
+        assert (project / "locales/fr/messages.json").exists()
+
+
 class TestTranslateWithoutProject:
     def test_translate_fails_with_a_message_pointing_to_init(self, tmp_path):
         result = CliRunner().invoke(cli, ["translate"])

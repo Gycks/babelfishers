@@ -30,11 +30,13 @@ class RunResult(BaseModel):
     """What a translation run changed on disk. All paths are absolute."""
 
     translated: list[Path] = []
+    # Target files left with untranslated text, or not written, because a provider failed.
+    incomplete: list[Path] = []
     state: list[Path] = []
 
     @property
     def paths(self) -> list[Path]:
-        """Every changed path, target files first. Empty when the run changed nothing."""
+        """The completely translated target files, then the state files. Empty when there is nothing to keep."""
         return [*self.translated, *self.state]
 
     @property
