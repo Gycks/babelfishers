@@ -8,7 +8,7 @@
 
 Babel Fishers is a command-line tool. It sends only the translatable text to the provider you choose, keeps placeholders and plural forms intact, checks every string that comes back, and writes the file in its original format. In CI, it opens the pull request for you.
 
-[!Babel Fishers Demo](https://raw.githubusercontent.com/Gycks/babelfishers/main/docs/assets/demo.gif)
+![Babel Fishers Demo](https://raw.githubusercontent.com/Gycks/babelfishers/main/docs/assets/demo.gif)
 
 ## Quickstart
 
