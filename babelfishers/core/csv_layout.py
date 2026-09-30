@@ -8,7 +8,7 @@ from typing import Any, Self
 
 from babel import Locale, UnknownLocaleError
 
-from babelfishers.core.supported_cultures import SUPPORTED_CULTURES
+from babelfishers.core.supported_cultures import resolve_culture_code
 
 
 BOM = "\ufeff"
@@ -48,7 +48,7 @@ class CsvOptions:
         normalized: dict[str, str] = {}
         for role, column in columns.items():
             name = role.strip().lower().replace("_", "-")
-            if name not in _ROLES and name not in SUPPORTED_CULTURES:
+            if name not in _ROLES and resolve_culture_code(name) is None:
                 raise ValueError(
                     f"'columns' entry '{role}' is neither key, value, context nor a supported locale. "
                     "Run `babelfishers locales` to list the supported ones"
@@ -160,7 +160,7 @@ def detect_csv_layout(path: Path, source_locale: str, options: CsvOptions | None
         locale = _locale(cell)
         if locale is None:
             continue
-        if locale not in SUPPORTED_CULTURES:
+        if resolve_culture_code(locale) is None:
             raise ValueError(
                 f"{path}: column '{cell.strip()}' is the locale '{locale}', which is not supported. "
                 "Run `babelfishers locales` to list the supported ones, or map the columns with 'columns'"

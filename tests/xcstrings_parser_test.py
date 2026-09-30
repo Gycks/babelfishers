@@ -185,18 +185,21 @@ class TestXcstringsParserTranslate:
 
         assert result["strings"]["Hello, world"]["localizations"]["fr"] == _mt("[fr] Hello, world")
 
-    def test_plural_group_gets_the_categories_the_target_needs(self, parser, write_catalog):
+    @pytest.mark.parametrize(
+        ("locale", "extra_categories"),
+        [("ru", ["few", "many"]), ("pt-BR", ["many"])],
+    )
+    def test_plural_group_gets_the_categories_the_target_needs(self, parser, write_catalog, locale, extra_categories):
         plural = {"variations": {"plural": {"one": _su("%d file"), "other": _su("%d files")}}}
         source = write_catalog(_catalog({"files": {"localizations": {"en": plural}}}))
 
-        result = _translate(parser, source, "ru", source)
+        result = _translate(parser, source, locale, source)
 
-        categories = result["strings"]["files"]["localizations"]["ru"]["variations"]["plural"]
+        categories = result["strings"]["files"]["localizations"][locale]["variations"]["plural"]
         assert categories == {
-            "one": _mt("[ru] %d file"),
-            "few": _mt("[ru] %d files"),
-            "many": _mt("[ru] %d files"),
-            "other": _mt("[ru] %d files"),
+            "one": _mt(f"[{locale}] %d file"),
+            **{category: _mt(f"[{locale}] %d files") for category in extra_categories},
+            "other": _mt(f"[{locale}] %d files"),
         }
 
     def test_plural_group_of_a_language_with_one_form_keeps_only_other(self, parser, write_catalog):

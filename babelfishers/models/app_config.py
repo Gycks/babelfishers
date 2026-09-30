@@ -5,7 +5,12 @@ from typing import Any, Self
 
 from pydantic import BaseModel
 
-from babelfishers.core.supported_cultures import SUPPORTED_CULTURES
+from babelfishers.core.supported_cultures import (
+    get_culture_name,
+    get_culture_variant,
+    get_unsupported_cultures,
+    resolve_culture_code,
+)
 from babelfishers.models.engine import Engine
 from babelfishers.models.glossary import Glossary
 from babelfishers.models.translation_resource import TranslationResource
@@ -22,6 +27,51 @@ class AppConfig(BaseModel):
     translation_engine: Engine
     glossary: Glossary | None
 
+    @staticmethod
+    def _parse_target_locales(source_locale: str, target_locales: Any) -> list[str]:
+        """Resolve the target codes, whatever their case, dropping repeats and the source locale.
+
+        A plain code and its default variant, such as `pt` and `pt-PT`, are the same locale, so both
+        can't be targets, and a target that is the source locale under another code is dropped too.
+        """
+        if not isinstance(target_locales, list):
+            raise ValueError("Invalid configuration file. Target locales is malformed. Use a list of locale codes.")
+
+        unknown = [
+            str(code) for code in target_locales if not isinstance(code, str) or resolve_culture_code(code) is None
+        ]
+        if unknown:
+            raise ValueError(
+                f"Invalid configuration file. Target locales {', '.join(unknown)} are not supported. "
+                "Run `babelfishers locales` to list the supported ones."
+            )
+
+        source_variant = get_culture_variant(source_locale)
+        by_variant: dict[str, str] = {}
+        for code in dict.fromkeys(resolve_culture_code(code) or code for code in target_locales):
+            variant = get_culture_variant(code)
+            if variant == source_variant:
+                continue
+
+            if variant in by_variant:
+                raise ValueError(
+                    f"Invalid configuration file. Target locales {by_variant[variant]} and {code} are both "
+                    f"{get_culture_name(code)}. Keep one."
+                )
+            by_variant[variant] = code
+
+        return list(by_variant.values())
+
+    @staticmethod
+    def _check_engine_locales(engine: Engine, source_locale: str, target_locales: list[str], where: str = "") -> None:
+        unsupported = get_unsupported_cultures(engine, source_locale, target_locales)
+        if unsupported:
+            raise ValueError(
+                f"Invalid configuration file. The engine {engine.value}{where} does not support the locale(s) "
+                f"{', '.join(unsupported)}. Pick another engine, or see which engine supports which locale at "
+                "https://gycks.github.io/babelfishers/reference/locales/"
+            )
+
     @classmethod
     def _parse_configuration(cls, config: dict[str, Any]) -> Self:
         locale_block = config.get("locale")
@@ -32,18 +82,16 @@ class AppConfig(BaseModel):
         if source_locale is None:
             raise ValueError("Invalid configuration file. Source locale not set.")
 
-        if source_locale not in SUPPORTED_CULTURES.keys():
+        resolved_source = resolve_culture_code(source_locale) if isinstance(source_locale, str) else None
+        if resolved_source is None:
             raise ValueError(f"Invalid configuration file. Source locale {source_locale} is not supported.")
+        source_locale = resolved_source
 
         target_locales = locale_block.get("targets")
         if target_locales is None or len(target_locales) == 0:
             raise ValueError("Invalid configuration file. Target locales not set.")
 
-        target_locales = list(set(target_locales))
-        target_locales.remove(source_locale) if source_locale in target_locales else None
-
-        if not set(target_locales).issubset(SUPPORTED_CULTURES):
-            raise ValueError("Invalid configuration file. Target locales is malformed.")
+        target_locales = cls._parse_target_locales(source_locale, target_locales)
 
         engine_block = config.get("engine")
         if engine_block is None:
@@ -57,8 +105,14 @@ class AppConfig(BaseModel):
         if engine is None:
             raise ValueError(f"Invalid configuration file. The Engine {engine_name} is not supported.")
 
+        cls._check_engine_locales(engine, source_locale, target_locales)
+
         resources_block = config.get("resources")
         resources = TranslationResource.batch_load(source_locale, resources_block)
+        for resource in resources:
+            if resource.engine is not None:
+                where = f" (set on a [resources.{resource.resource_type}] path)"
+                cls._check_engine_locales(resource.engine, source_locale, target_locales, where)
 
         translation_block = config.get("translation")
         glossary = None

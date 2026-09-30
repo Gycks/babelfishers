@@ -198,6 +198,23 @@ class TestGettextParserClone:
         assert [u.key for u in cloned.units] == ["Hello"]
 
     @pytest.mark.parametrize(
+        ("locale", "language", "plural_forms"),
+        [
+            ("pt-BR", "pt_BR", "nplurals=2; plural=(n > 1);"),
+            ("prs", "prs", "nplurals=1; plural=0;"),
+        ],
+    )
+    def test_clone_for_a_regional_or_borrowed_locale_finds_its_plural_forms(
+        self, parser, write_po, locale, language, plural_forms
+    ):
+        source = write_po('msgid "Hello"\nmsgstr ""\n')
+        cloned = parser.clone(parser.parse(source, []), locale)
+
+        assert cloned.document[0]["msgstr"] == (
+            f"Content-Type: text/plain; charset=UTF-8\nLanguage: {language}\nPlural-Forms: {plural_forms}\n"
+        )
+
+    @pytest.mark.parametrize(
         ("locale", "expected_sources"),
         [
             ("fr", ["one item", "%d items"]),

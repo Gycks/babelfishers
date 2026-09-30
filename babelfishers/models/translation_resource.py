@@ -176,6 +176,12 @@ class TranslationResource(BaseModel):
                     for path in [Path(p)]
                     if excluded.isdisjoint([path, *path.parents])
                 ]
+                if not resource_paths:
+                    shown = path_pattern
+                    if resolved_pattern != path_pattern:
+                        shown = f"{path_pattern} (as {resolved_pattern})"
+                    msg = f"[resources.{resource_type}] path {shown} matched no files."
+                    _logger.warning(ConsoleFormatter.warning(msg))
 
                 engine_string = entry.get("engine")
                 engine: Engine | None = None

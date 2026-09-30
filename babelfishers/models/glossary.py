@@ -6,7 +6,7 @@ from typing import Any, Self
 
 from pydantic import BaseModel
 
-from babelfishers.core.supported_cultures import SUPPORTED_CULTURES
+from babelfishers.core.supported_cultures import resolve_culture_code
 from babelfishers.utils.console_formater import ConsoleFormatter
 
 
@@ -177,7 +177,7 @@ class Glossary(BaseModel):
             context = entry.get("context") or ""
             translations: dict[str, str] = entry.get("translations") or {}
 
-            invalid_codes = set(translations.keys()) - set(SUPPORTED_CULTURES)
+            invalid_codes = {code for code in translations if resolve_culture_code(code) is None}
             if invalid_codes:
                 _logger.warning(
                     ConsoleFormatter.warning(
@@ -192,7 +192,7 @@ class Glossary(BaseModel):
                     term=term,
                     translatable=translatable,
                     context=context,
-                    translations=translations,
+                    translations={resolve_culture_code(code) or code: text for code, text in translations.items()},
                 )
             )
         return cls(terms=results)

@@ -227,11 +227,27 @@ class TestTranslationResourceValidation:
     def test_returns_empty_list_when_data_has_no_keys(self):
         assert TranslationResource.load("en", "json", {}) == []
 
-    def test_returns_resource_with_empty_paths_when_glob_matches_nothing(self, tmp_path, monkeypatch):
+    def test_returns_resource_with_empty_paths_when_glob_matches_nothing(self, tmp_path, monkeypatch, caplog):
         monkeypatch.chdir(tmp_path)
-        data = {"paths": ["does_not_exist_*.json"]}
-        resources = TranslationResource.load("en", "json", data)
+        data = {"paths": ["locales/[source]/*.json"]}
+        resources = TranslationResource.load("en-US", "json", data)
         assert resources[0].paths == []
+        assert any(
+            "[resources.json] path locales/[source]/*.json (as locales/en-US/*.json) matched no files" in r.message
+            for r in caplog.records
+        )
+
+    def test_warns_when_every_matched_file_is_excluded(self, tmp_path, monkeypatch, make_file, caplog):
+        monkeypatch.chdir(tmp_path)
+        make_file("draft.json", "{}")
+        TranslationResource.load("en", "json", {"paths": [{"path": "draft.json", "exclude": ["draft.json"]}]})
+        assert any("path draft.json matched no files" in r.message for r in caplog.records)
+
+    def test_does_not_warn_when_the_path_matches_files(self, tmp_path, monkeypatch, make_file, caplog):
+        monkeypatch.chdir(tmp_path)
+        make_file("en.json", "{}")
+        TranslationResource.load("en", "json", {"paths": ["[source].json"]})
+        assert not any("matched no files" in r.message for r in caplog.records)
 
     def test_a_wide_csv_file_is_translated_in_place(self, tmp_path, monkeypatch, make_file):
         monkeypatch.chdir(tmp_path)
@@ -262,9 +278,9 @@ class TestTranslationResourceValidation:
         self, tmp_path, monkeypatch, make_file
     ):
         monkeypatch.chdir(tmp_path)
-        make_file("strings.csv", "key,en,sw\n")
+        make_file("strings.csv", "key,en,eo\n")
 
-        with pytest.raises(ValueError, match="'sw', which is not supported"):
+        with pytest.raises(ValueError, match="'eo', which is not supported"):
             TranslationResource.load("en", "csv", {"paths": ["strings.csv"]})
 
     def test_loading_fails_on_a_csv_file_whose_layout_cannot_be_told(self, tmp_path, monkeypatch, make_file):

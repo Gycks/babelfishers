@@ -4,7 +4,7 @@ from typing import Any
 
 import click
 
-from babelfishers.core.supported_cultures import SUPPORTED_CULTURES
+from babelfishers.core.supported_cultures import SUPPORTED_CULTURES, resolve_culture_code
 
 
 def _unknown_locale_message(code: str) -> str:
@@ -12,18 +12,19 @@ def _unknown_locale_message(code: str) -> str:
     if close_matches:
         return f"Unknown locale '{code}'. Did you mean '{close_matches[0]}'?"
 
-    return f"Unknown locale '{code}'. Supported locales: {', '.join(sorted(SUPPORTED_CULTURES))}"
+    return f"Unknown locale '{code}'. Run `babelfishers locales` to list the supported ones."
 
 
 class LocaleType(click.ParamType[str]):
     name = "locale"
 
     def convert(self, value: Any, param: click.Parameter | None, ctx: click.Context | None) -> str:
-        code = str(value).strip().lower()
-        if code not in SUPPORTED_CULTURES:
+        code = str(value).strip()
+        resolved = resolve_culture_code(code)
+        if resolved is None:
             self.fail(_unknown_locale_message(code), param, ctx)
 
-        return code
+        return resolved
 
 
 class LocaleListType(click.ParamType[list[str]]):

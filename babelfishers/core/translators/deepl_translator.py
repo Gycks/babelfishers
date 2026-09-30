@@ -39,7 +39,7 @@ class DeeplTranslator(Translator):
                 try:
                     result: TextResult | list[TextResult] = self._translator.translate_text(
                         unit.source_text,
-                        source_lang=get_culture_code_for_engine(source, self._engine),
+                        source_lang=get_culture_code_for_engine(source, self._engine, as_source=True),
                         target_lang=get_culture_code_for_engine(target, self._engine),
                         context=unit.context_hint,
                         preserve_formatting=True,

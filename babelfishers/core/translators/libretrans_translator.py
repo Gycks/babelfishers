@@ -41,7 +41,7 @@ class LibreTranslateTranslator(Translator):
                 try:
                     translated_text: str = self._client.translate(
                         unit.source_text,
-                        source=get_culture_code_for_engine(source, self._engine),
+                        source=get_culture_code_for_engine(source, self._engine, as_source=True),
                         target=get_culture_code_for_engine(target, self._engine),
                     )
                     break

@@ -58,7 +58,7 @@ class GoogleTranslateTranslator(Translator):
                     response: translate.TranslateTextResponse = self._client.translate_text(
                         contents=[unit.source_text],
                         target_language_code=get_culture_code_for_engine(target, self._engine),
-                        source_language_code=get_culture_code_for_engine(source, self._engine),
+                        source_language_code=get_culture_code_for_engine(source, self._engine, as_source=True),
                         mime_type=mime_type,
                         parent=parent,
                     )

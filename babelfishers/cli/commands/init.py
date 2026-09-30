@@ -4,6 +4,7 @@ import click
 
 from babelfishers.cli import ui
 from babelfishers.cli.param_types import LocaleListType, LocaleType
+from babelfishers.core.supported_cultures import get_culture_variant, get_unsupported_cultures
 from babelfishers.models.engine import Engine
 
 
@@ -31,7 +32,7 @@ def _render_config(source: str, targets: list[str], engine: str) -> str:
 
 
 def _without_source(targets: list[str], source: str) -> list[str]:
-    remaining = [target for target in targets if target != source]
+    remaining = [target for target in targets if get_culture_variant(target) != get_culture_variant(source)]
     if not remaining:
         raise click.BadParameter(
             f"Provide at least one locale other than the source locale '{source}'.", param_hint="--targets"
@@ -83,6 +84,13 @@ def initialize(source: str | None, targets: list[str] | None, engine: str | None
         engine = click.prompt(
             ui.step(3, _TOTAL_STEPS, "Translation engine"),
             type=click.Choice(_ENGINES, case_sensitive=False),
+        )
+
+    unsupported = get_unsupported_cultures(Engine(engine.lower()), source, targets)
+    if unsupported:
+        raise click.BadParameter(
+            f"{engine} does not support the locale(s) {', '.join(unsupported)}. Pick another engine.",
+            param_hint="--engine",
         )
 
     content = _render_config(source, targets, engine)

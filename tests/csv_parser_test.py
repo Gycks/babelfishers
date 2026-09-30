@@ -106,8 +106,8 @@ class TestCsvLayoutDetection:
         assert (layout.key, layout.locales, layout.context) == (0, {"en": 1, "fr": 2}, 3)
 
     def test_a_locale_column_that_is_not_supported_fails(self, write_csv):
-        with pytest.raises(ValueError, match="'pt-br', which is not supported"):
-            detect_csv_layout(write_csv("key,en,pt-BR\n"), "en")
+        with pytest.raises(ValueError, match="'pt-ao', which is not supported"):
+            detect_csv_layout(write_csv("key,en,pt-AO\n"), "en")
 
     def test_locale_columns_without_the_source_locale_fail(self, write_csv):
         with pytest.raises(ValueError, match="none for the source locale 'en'"):

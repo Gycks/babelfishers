@@ -21,12 +21,12 @@ class TestLocalesCommand:
         assert result.exit_code == 0
         assert f"Supported locales ({len(SUPPORTED_CULTURES)})" in result.output
         for culture in SUPPORTED_CULTURES.values():
-            assert re.search(rf"\b{culture.code}  {re.escape(culture.name)}", result.output), culture.code
+            assert re.search(rf"\b{re.escape(culture.code)} +{re.escape(culture.name)}", result.output), culture.code
 
     def test_search_matches_the_name_case_insensitively(self):
         result = CliRunner().invoke(cli, ["locales", "--search", "GERMAN"])
 
-        assert "Locales matching 'GERMAN' (1)" in result.output
+        assert "Locales matching 'GERMAN' (3)" in result.output
         assert "German" in result.output
         assert "French" not in result.output
 

@@ -9,6 +9,7 @@ from typing import Any
 from babel import UnknownLocaleError
 from babel.messages.plurals import get_plural
 
+from babelfishers.core.guards.cldr import babel_locale_id
 from babelfishers.core.parsers.parser import Parser, excluded_keys_without_duplicates
 from babelfishers.core.parsers.registry import register
 from babelfishers.models.translation_resource import TranslationResourceType
@@ -162,7 +163,7 @@ class GettextParser(Parser):
         singular_slot: int | None = 0
 
         try:
-            plural = get_plural(language)
+            plural = get_plural(babel_locale_id(target_locale))
         except (UnknownLocaleError, ValueError):
             self._logger.warning(
                 ConsoleFormatter.warning(

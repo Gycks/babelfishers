@@ -1,7 +1,8 @@
 import pytest
 
 from babelfishers.models.app_config import AppConfig
-from babelfishers.core.supported_cultures import SUPPORTED_CULTURES
+from babelfishers.core.supported_cultures import SUPPORTED_CULTURES, is_supported_by
+from babelfishers.models.engine import Engine
 
 
 @pytest.fixture
@@ -149,11 +150,16 @@ class TestAppConfigLoadFileValidation:
             AppConfig.load(config_file)
 
     def test_loads_valid_configuration(self, write_config):
+        deepl_targets = [
+            code
+            for code, culture in SUPPORTED_CULTURES.items()
+            if culture.default_variant is None and code != "en-US" and is_supported_by(code, Engine.DeepL)
+        ]
         config_file = write_config(
             f"""
             [locale]
             source = "en"
-            targets = {[key for key in SUPPORTED_CULTURES.keys() if key != "en"]} 
+            targets = {deepl_targets}
             
             [engine]
             provider = "deepl"
@@ -161,7 +167,7 @@ class TestAppConfigLoadFileValidation:
         )
         config = AppConfig.load(config_file)
         assert config.source_locale == "en"
-        assert sorted(config.target_locales) == sorted([key for key in SUPPORTED_CULTURES.keys() if key != "en"])
+        assert sorted(config.target_locales) == sorted(deepl_targets)
         assert config.translation_engine.value == "deepl"
 
     def test_raises_value_error_when_toml_syntax_is_malformed(self, write_config):
@@ -219,4 +225,91 @@ class TestAppConfigLoadFileValidation:
             provider = "deepl"
             """)
         with pytest.raises(ValueError, match="Source locale"):
+            AppConfig.load(config_file)
+
+    def test_locale_codes_are_matched_whatever_their_case(self, write_config):
+        config_file = write_config("""
+            [locale]
+            source = "EN-us"
+            targets = ["pt-br", "zh-hant"]
+
+            [engine]
+            provider = "deepl"
+            """)
+        config = AppConfig.load(config_file)
+        assert config.source_locale == "en-US"
+        assert sorted(config.target_locales) == ["pt-BR", "zh-Hant"]
+
+    def test_target_that_is_the_source_under_its_plain_code_is_dropped(self, write_config):
+        config_file = write_config("""
+            [locale]
+            source = "en"
+            targets = ["en-US", "fr"]
+
+            [engine]
+            provider = "deepl"
+            """)
+        config = AppConfig.load(config_file)
+        assert config.target_locales == ["fr"]
+
+    def test_rejects_a_plain_code_next_to_its_default_variant(self, write_config):
+        config_file = write_config("""
+            [locale]
+            source = "en"
+            targets = ["pt", "pt-PT"]
+
+            [engine]
+            provider = "deepl"
+            """)
+        with pytest.raises(ValueError, match=r"pt and pt-PT are both Portuguese \(Portugal\)"):
+            AppConfig.load(config_file)
+
+    @pytest.mark.parametrize(
+        ("provider", "source", "targets", "unsupported"),
+        [
+            ("deepl", "en", ["fr", "am"], "am"),
+            ("libre-translate", "af", ["fr"], "af"),
+            ("azure", "en", ["en-GB", "de"], "en-GB"),
+            ("google-translate", "en", ["prs"], "prs"),
+        ],
+    )
+    def test_rejects_locales_the_engine_does_not_support(self, write_config, provider, source, targets, unsupported):
+        config_file = write_config(f"""
+            [locale]
+            source = "{source}"
+            targets = {targets}
+
+            [engine]
+            provider = "{provider}"
+            """)
+        with pytest.raises(ValueError, match=f"engine {provider} does not support the locale\\(s\\) {unsupported}\\."):
+            AppConfig.load(config_file)
+
+    def test_ai_providers_support_every_locale(self, write_config):
+        config_file = write_config("""
+            [locale]
+            source = "en-GB"
+            targets = ["am", "wo", "sr-Latn"]
+
+            [engine]
+            provider = "anthropic"
+            """)
+        config = AppConfig.load(config_file)
+        assert sorted(config.target_locales) == ["am", "sr-Latn", "wo"]
+
+    def test_rejects_locales_the_engine_of_a_resource_does_not_support(self, write_config, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "en.json").write_text("{}")
+        config_file = write_config("""
+            [locale]
+            source = "en"
+            targets = ["am"]
+
+            [engine]
+            provider = "anthropic"
+
+            [resources.json]
+            paths = [{ path = "[source].json", engine = "deepl" }]
+            """)
+        with pytest.raises(ValueError, match=r"engine deepl \(set on a \[resources.json\] path\) does not support"):
             AppConfig.load(config_file)

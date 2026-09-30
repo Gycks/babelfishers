@@ -203,13 +203,13 @@ class CSVParser(Parser):
         live = {unit.key for unit in data.units}
         translated_from = self._translated_from(str(data.source_path), target_locale)
         target = _Target(
-            target_locale.lower(),
+            target_locale,
             translated_from,
             record={key: value for key, value in translated_from.items() if key in live},
         )
 
         units: list[TranslationUnit] = []
-        if target.locale == table.layout.source_locale:
+        if target.locale.lower() == table.layout.source_locale:
             self._logger.warning(
                 ConsoleFormatter.warning(f"Skipping '{target_locale}': it is the source locale of {data.source_path}")
             )
@@ -243,7 +243,7 @@ class CSVParser(Parser):
                     return
 
                 current = self._read_table(destination)
-                column = current.layout.locales.get(target.locale)
+                column = current.layout.locales.get(target.locale.lower())
                 if column is None:
                     column = len(current.rows[0])
                     current.rows[0].append(target.locale)

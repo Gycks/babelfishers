@@ -5,14 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.1.3] - 2026-09-30
 
 ### Added
 - Apple String Catalogs (`.xcstrings`). Translations are marked Needs Review for Xcode. A translation waiting for review or already approved is left alone while its source text stays the same, and is translated again when the source text changes. The run lock remembers which source text each translation came from.
+- 106 more locales, 133 codes in all, including regional variants such as `pt-BR`, `en-GB`, `es-419`, `fr-CA` and `zh-Hant`. Each translation service has its own list, and the configuration fails to load when the provider, or one set with `engine` on a path, can't translate a locale. AI providers translate every locale. Codes are not case sensitive, so `pt-br` works too. See [Supported locales](https://gycks.github.io/babelfishers/reference/locales/).
 - CSV and TSV files. A file with a column per locale gets its empty target cells filled in place, and a cell is translated again when its source text changes. A file with a `value` column is written once per locale. The layout, the delimiter and the columns are detected from the header, and a column for a locale that isn't supported stops the run when the configuration loads. `delimiter` and `columns` on a path entry override detection.
 
 ### Changed
+- A plain code now stands for the same variant on every provider: `en` is US English, `pt` European Portuguese, `es`, `fr` and `de` the variants of Spain, France and Germany, `zh` Simplified Chinese and `no` Norwegian Bokmål. Azure and Google Cloud used to translate `pt` into Brazilian Portuguese. AI providers are now told the variant too.
 - `ci` holds back a file that several locales write to, such as a String Catalog, when a provider failed on any of those locales. None of its locales are recorded as up to date, so the next run finishes it and the file is published whole.
+
+### Fixed
+- DeepL can translate into `en`. It used to reject it before sending anything.
+- LibreTranslate can translate into `no`.
 
 ## [0.1.2] - 2026-09-29
 
