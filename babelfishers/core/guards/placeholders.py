@@ -31,6 +31,9 @@ _INLINE_XML_SELF_CLOSING_TAG = re.compile(r"<[\w:.-]+(?:\s[^>]*)?/>")
 _XML_ENTITY = re.compile(r"&(?:[A-Za-z_][\w.-]*|#\d+|#x[0-9A-Fa-f]+);")
 
 
+# The stringsdict reference goes first: `_PRINTF` would otherwise claim its `%#@` prefix and leave the name exposed.
+_APPLE_PLACEHOLDERS = [_STRINGSDICT_SPECIFIER, _XCSTRINGS_ARG, _PRINTF]
+
 FORMAT_CATEGORIES: dict[TranslationResourceType, list[re.Pattern[str]]] = {
     TranslationResourceType.HTML: [],
     TranslationResourceType.JSON: [_PRINTF],
@@ -38,8 +41,8 @@ FORMAT_CATEGORIES: dict[TranslationResourceType, list[re.Pattern[str]]] = {
     TranslationResourceType.JAVA_PROPERTIES: [_PRINTF],
     TranslationResourceType.ANDROID_STRINGS: [_INLINE_XML_TAG_PAIR, _INLINE_XML_SELF_CLOSING_TAG, _XML_ENTITY, _PRINTF],
     TranslationResourceType.GETTEXT: [_PRINTF, _PYTHON_PERCENT_NAMED],
-    # The stringsdict reference goes first: `_PRINTF` would otherwise claim its `%#@` prefix and leave the name exposed.
-    TranslationResourceType.APPLE_STRINGS: [_STRINGSDICT_SPECIFIER, _XCSTRINGS_ARG, _PRINTF],
+    TranslationResourceType.APPLE_STRINGS: _APPLE_PLACEHOLDERS,
+    TranslationResourceType.XCSTRINGS: _APPLE_PLACEHOLDERS,
     TranslationResourceType.FLUTTER_ARB: [],
     TranslationResourceType.XLIFF: [_INLINE_XML_TAG_PAIR, _INLINE_XML_SELF_CLOSING_TAG, _XML_ENTITY, _PRINTF],
     TranslationResourceType.DOTNET_RESX: [],
