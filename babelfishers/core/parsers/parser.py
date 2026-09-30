@@ -1,8 +1,10 @@
+import hashlib
 import logging
 from abc import ABC, abstractmethod
 from collections import Counter
 from collections.abc import Callable, Mapping
 from pathlib import Path
+from typing import Any
 
 from babelfishers.models.translations import ParseResult, TranslationUnit
 from babelfishers.utils.console_formater import ConsoleFormatter
@@ -36,6 +38,10 @@ def excluded_keys_without_duplicates(
     return set(excluded_keys) - duplicated.keys()
 
 
+def source_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
 def _nothing_recorded(path: str, locale: str) -> Mapping[str, str]:
     return {}
 
@@ -59,6 +65,10 @@ class Parser(ABC):
         """
         self._source_locale: str | None = source_locale
         self._translated_from: Callable[[str, str], Mapping[str, str]] = _nothing_recorded
+        self._options: Mapping[str, Any] = {}
+
+    def use_options(self, options: Mapping[str, Any]) -> None:
+        self._options = dict(options)
 
     def use_translated_from(self, lookup: Callable[[str, str], Mapping[str, str]]) -> None:
         self._translated_from = lookup

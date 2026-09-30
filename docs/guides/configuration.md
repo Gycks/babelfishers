@@ -103,6 +103,7 @@ paths = [
 | `exclude` | No | A list of files, folders or patterns to skip. A folder skips every file inside it, at any depth. |
 | `engine` | No | A provider to use for these files instead of the default. |
 | `excluded_keys` | No | Keys inside the files that must stay untranslated. |
+| `delimiter`, `columns` | No | CSV only. How to read the columns. See [CSV options](../formats.md#csv-options). |
 
 The way to write a key depends on the format. See [Leave content out](../formats.md#leave-content-out).
 

@@ -412,6 +412,46 @@ class TestRuntimeRunLockSkipping:
         assert set(RunLockStore().translated_from("Localizable.xcstrings", "fr")) == {"greeting"}
         assert RunLockStore().lookup("Localizable.xcstrings", "de") is not None
 
+    def test_a_wide_csv_file_gets_each_target_column_and_the_next_run_leaves_it_alone(
+        self, write_json, tmp_path, monkeypatch
+    ):
+        source = tmp_path / "strings.csv"
+        source.write_text("key,en\ngreeting,Hello\nbye,Bye\n", encoding="utf-8")
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+        resources = TranslationResource.load("en", "csv", {"paths": ["strings.csv"]})
+        Runtime(_config(resources, ["fr", "de"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert set(source.read_text(encoding="utf-8").splitlines()[0].split(",")) == {"key", "en", "fr", "de"}
+
+        source.write_text(source.read_text(encoding="utf-8").replace(",Hello,", ",Hi,"), encoding="utf-8")
+        sent = []
+        _register(
+            monkeypatch,
+            Engine.DeepL,
+            transform=lambda unit, target: sent.append((unit.key, target)) or _default_transform(unit, target),
+        )
+        resources = TranslationResource.load("en", "csv", {"paths": ["strings.csv"]})
+        Runtime(_config(resources, ["fr", "de"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert sorted(sent) == [("greeting", "de"), ("greeting", "fr")]
+        rows = [line.split(",") for line in source.read_text(encoding="utf-8").splitlines()]
+        header = rows[0]
+        assert rows[1][header.index("fr")] == "[fr] Hi"
+        assert rows[2][header.index("de")] == "[de] Bye"
+
+    def test_a_narrow_csv_file_is_written_per_locale_with_the_options_of_its_path(
+        self, write_json, tmp_path, monkeypatch
+    ):
+        (tmp_path / "i18n/en").mkdir(parents=True)
+        (tmp_path / "i18n/en/strings.csv").write_text("key;value\ngreeting;Hello\n", encoding="utf-8")
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+        entry = {"path": "i18n/[source]/strings.csv", "delimiter": ";"}
+        resources = TranslationResource.load("en", "csv", {"paths": [entry]})
+
+        Runtime(_config(resources, ["fr"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert (tmp_path / "i18n/fr/strings.csv").read_text(encoding="utf-8") == "key;value\ngreeting;[fr] Hello\n"
+
     def test_retranslates_every_locale_when_the_source_file_content_changes(self, write_json, tmp_path, monkeypatch):
         write_json("locales/en/messages.json", {"greeting": "Hello"})
         call_log = []

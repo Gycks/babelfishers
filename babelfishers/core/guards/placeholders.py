@@ -46,4 +46,5 @@ FORMAT_CATEGORIES: dict[TranslationResourceType, list[re.Pattern[str]]] = {
     TranslationResourceType.FLUTTER_ARB: [],
     TranslationResourceType.XLIFF: [_INLINE_XML_TAG_PAIR, _INLINE_XML_SELF_CLOSING_TAG, _XML_ENTITY, _PRINTF],
     TranslationResourceType.DOTNET_RESX: [],
+    TranslationResourceType.CSV: [_PRINTF],
 }

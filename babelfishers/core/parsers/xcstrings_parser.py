@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from babelfishers.core.guards.cldr import required_plural_categories
-from babelfishers.core.parsers.parser import Parser
+from babelfishers.core.parsers.parser import Parser, source_hash
 from babelfishers.core.parsers.registry import register
 from babelfishers.models.translation_resource import TranslationResourceType
 from babelfishers.models.translations import ParseResult, TranslationUnit
@@ -51,10 +51,6 @@ class _PluralPart:
 
     prefix: tuple[str, ...]
     texts: dict[str, str]
-
-
-def _source_hash(text: str) -> str:
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
 def _unit_key(key: str, label: str) -> str:
@@ -320,9 +316,9 @@ class XCStringParser(Parser):
         recorded = translated_from.get(unit_key)
         state = string_unit.get("state")
         if state == _NEEDS_REVIEW:
-            return recorded != _source_hash(source_text)
+            return recorded != source_hash(source_text)
         if state == _TRANSLATED:
-            return recorded is not None and recorded != _source_hash(source_text)
+            return recorded is not None and recorded != source_hash(source_text)
         return True
 
     @staticmethod
@@ -454,7 +450,7 @@ class XCStringParser(Parser):
     def _make_write_back(target: _Target, write: _Write, unit_key: str, source_text: str) -> Callable[[str], None]:
         def write_back(translated: str) -> None:
             target.writes[write] = translated
-            target.record[unit_key] = _source_hash(source_text)
+            target.record[unit_key] = source_hash(source_text)
 
         return write_back
 

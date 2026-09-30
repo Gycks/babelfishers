@@ -5,8 +5,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Self
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from babelfishers.core.csv_layout import CsvOptions, detect_csv_layout
 from babelfishers.models.engine import Engine
 from babelfishers.utils.console_formater import ConsoleFormatter
 
@@ -65,6 +66,7 @@ class TranslationResourceType(StrEnum):
     XLIFF = "xliff"
     DOTNET_RESX = "resx"
     XCSTRINGS = "xcstrings"
+    CSV = "csv"
 
     @classmethod
     def validate(cls, name: str) -> Self | None:
@@ -90,11 +92,20 @@ class ResourcePath(BaseModel):
         return self.path.with_name(f"{self.path.stem}_{locale}{self.path.suffix}")
 
 
+def _in_place(resource_type: TranslationResourceType, path: Path, locale: str, options: dict[str, Any]) -> bool:
+    if resource_type == TranslationResourceType.XCSTRINGS:
+        return True
+    if resource_type == TranslationResourceType.CSV:
+        return detect_csv_layout(path, locale, CsvOptions.from_mapping(options)).wide
+    return False
+
+
 class TranslationResource(BaseModel):
     resource_type: TranslationResourceType
     excluded_keys: list[str]
     engine: Engine | None
     paths: list[ResourcePath]
+    options: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
     def load(
@@ -150,11 +161,16 @@ class TranslationResource(BaseModel):
                 }
 
                 # A path is skipped when it, or any folder containing it, was excluded.
+                options: dict[str, Any] = {}
+                if resource_type == TranslationResourceType.CSV:
+                    options = {name: entry[name] for name in ("delimiter", "columns") if name in entry}
+                    CsvOptions.from_mapping(options)
+
                 resource_paths = [
                     ResourcePath(
                         path=path,
                         pattern=_build_destination_pattern(path_pattern, resolved_pattern, str(path)),
-                        in_place=resource_type == TranslationResourceType.XCSTRINGS,
+                        in_place=_in_place(resource_type, path, locale, options),
                     )
                     for p in glob.glob(resolved_pattern, recursive=True)
                     for path in [Path(p)]
@@ -182,6 +198,7 @@ class TranslationResource(BaseModel):
                         excluded_keys=[key for key in excluded_keys if key is not None],
                         engine=engine,
                         paths=resource_paths,
+                        options=options,
                     )
                 )
 

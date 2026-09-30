@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Apple String Catalogs (`.xcstrings`). Translations are marked Needs Review for Xcode. A translation waiting for review or already approved is left alone while its source text stays the same, and is translated again when the source text changes. The run lock remembers which source text each translation came from.
+- CSV and TSV files. A file with a column per locale gets its empty target cells filled in place, and a cell is translated again when its source text changes. A file with a `value` column is written once per locale. The layout, the delimiter and the columns are detected from the header, and a column for a locale that isn't supported stops the run when the configuration loads. `delimiter` and `columns` on a path entry override detection.
 
 ### Changed
 - `ci` holds back a file that several locales write to, such as a String Catalog, when a provider failed on any of those locales. None of its locales are recorded as up to date, so the next run finishes it and the file is published whole.

@@ -153,7 +153,10 @@ class Runtime:
 
         for resource in self._config.resources:
             parser = ParserFactory.create(
-                resource.resource_type, self._config.source_locale, self._run_lock_store.translated_from
+                resource.resource_type,
+                self._config.source_locale,
+                self._run_lock_store.translated_from,
+                resource.options,
             )
             for resource_path in resource.paths:
                 content_hash = parser.content_hash(resource_path.path)
@@ -200,7 +203,10 @@ class Runtime:
                 continue
 
             parser = ParserFactory.create(
-                resource.resource_type, self._config.source_locale, self._run_lock_store.translated_from
+                resource.resource_type,
+                self._config.source_locale,
+                self._run_lock_store.translated_from,
+                resource.options,
             )
 
             engines: list[Engine] = []

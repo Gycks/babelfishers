@@ -233,6 +233,53 @@ class TestTranslationResourceValidation:
         resources = TranslationResource.load("en", "json", data)
         assert resources[0].paths == []
 
+    def test_a_wide_csv_file_is_translated_in_place(self, tmp_path, monkeypatch, make_file):
+        monkeypatch.chdir(tmp_path)
+        make_file("i18n/strings.csv", "key,en,fr\n")
+
+        resource = TranslationResource.load("en", "csv", {"paths": ["i18n/strings.csv"]})[0]
+
+        assert resource.paths[0].get_destination_path("fr") == Path("i18n/strings.csv")
+
+    def test_a_narrow_csv_file_is_written_once_per_locale(self, tmp_path, monkeypatch, make_file):
+        monkeypatch.chdir(tmp_path)
+        make_file("i18n/en/strings.csv", "key,value\n")
+
+        resource = TranslationResource.load("en", "csv", {"paths": ["i18n/[source]/strings.csv"]})[0]
+
+        assert resource.paths[0].get_destination_path("fr") == Path("i18n/fr/strings.csv")
+
+    def test_csv_options_are_kept_on_the_resource(self, tmp_path, monkeypatch, make_file):
+        monkeypatch.chdir(tmp_path)
+        make_file("strings.csv", "key;en\n")
+        entry = {"path": "strings.csv", "delimiter": ";", "columns": {"key": "key"}}
+
+        resource = TranslationResource.load("en", "csv", {"paths": [entry]})[0]
+
+        assert resource.options == {"delimiter": ";", "columns": {"key": "key"}}
+
+    def test_loading_fails_on_a_csv_column_for_a_locale_that_is_not_supported(
+        self, tmp_path, monkeypatch, make_file
+    ):
+        monkeypatch.chdir(tmp_path)
+        make_file("strings.csv", "key,en,sw\n")
+
+        with pytest.raises(ValueError, match="'sw', which is not supported"):
+            TranslationResource.load("en", "csv", {"paths": ["strings.csv"]})
+
+    def test_loading_fails_on_a_csv_file_whose_layout_cannot_be_told(self, tmp_path, monkeypatch, make_file):
+        monkeypatch.chdir(tmp_path)
+        make_file("strings.csv", "a,b\n")
+
+        with pytest.raises(ValueError, match="Can't tell the layout"):
+            TranslationResource.load("en", "csv", {"paths": ["strings.csv"]})
+
+    def test_loading_fails_on_invalid_csv_options_even_without_matching_files(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+
+        with pytest.raises(ValueError, match="Invalid csv delimiter"):
+            TranslationResource.load("en", "csv", {"paths": [{"path": "*.csv", "delimiter": ":"}]})
+
     def test_recursive_glob_matches_nested_subdirectories(self, tmp_path, monkeypatch, make_file):
         monkeypatch.chdir(tmp_path)
         make_file("locales/en/nested/a.json")
