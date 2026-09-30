@@ -25,7 +25,8 @@ _UNESCAPE_MAP: dict[str, str] = {"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\"
 
 @register(TranslationResourceType.APPLE_STRINGS)
 class AppleStringsParser(Parser):
-    def __init__(self) -> None:
+    def __init__(self, source_locale: str | None = None) -> None:
+        super().__init__(source_locale)
         self._logger: logging.Logger = logging.getLogger(__name__)
         self._ALLOWED_EXTENSION: str = ".strings"
 

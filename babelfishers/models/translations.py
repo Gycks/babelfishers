@@ -2,7 +2,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, SkipValidation
 
 from babelfishers.models.translation_resource import TranslationResourceType
 
@@ -27,6 +27,7 @@ class ParseResult(BaseModel):
     save: Callable[[Path], None]
     # The exclusions `units` were built with, so `clone` builds the same units from its copy.
     excluded_keys: set[str] = Field(default_factory=set)
+    translated_from: SkipValidation[dict[str, str] | None] = None
 
 
 class StoreStats(BaseModel):

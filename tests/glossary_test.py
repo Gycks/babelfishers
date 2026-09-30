@@ -45,13 +45,6 @@ class TestGlossaryLoadFileValidation:
 
 
 class TestGlossaryLoadEntryValidation:
-    @pytest.fixture(autouse=True)
-    def stub_supported_cultures(self, monkeypatch):
-        monkeypatch.setattr(
-            "babelfishers.models.glossary.SUPPORTED_CULTURES",
-            {"en": "English", "fr": "French", "de": "German"},
-        )
-
     def test_returns_empty_glossary_when_data_is_empty_list(self, write_glossary):
         glossary_file = write_glossary([])
         glossary = Glossary.load(str(glossary_file))

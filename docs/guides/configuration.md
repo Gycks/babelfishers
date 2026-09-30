@@ -36,9 +36,11 @@ targets = ["fr", "de", "ja"]
 - `source` is the language of your original files.
 - `targets` is the list of languages to translate into.
 
-Use plain language codes, for example `pt` and not `pt-BR`. Regional variants are not supported. Run `babelfishers locales` to list every code you can use.
+A plain code such as `pt` stands for one regional variant, the same on every provider. Use a regional code such as `pt-BR` when you need another variant. Codes are not case sensitive. See [Supported locales](../reference/locales.md) for every code, the variant each plain code stands for and which provider supports which locale.
 
 If the source language also appears in `targets`, it is ignored. Repeated codes are counted once.
+
+The configuration fails to load when the provider can't translate one of the locales. That includes a provider set with `engine` on a path.
 
 ## The engine section
 
@@ -103,6 +105,7 @@ paths = [
 | `exclude` | No | A list of files, folders or patterns to skip. A folder skips every file inside it, at any depth. |
 | `engine` | No | A provider to use for these files instead of the default. |
 | `excluded_keys` | No | Keys inside the files that must stay untranslated. |
+| `delimiter`, `columns` | No | CSV only. How to read the columns. See [CSV options](../formats.md#csv-options). |
 
 The way to write a key depends on the format. See [Leave content out](../formats.md#leave-content-out).
 
@@ -181,6 +184,7 @@ Every command that reads the file checks it first. Babel Fishers stops and names
 | No Babel Fishers project found | Run `babelfishers init` in this folder, or move to the folder that has the file. |
 | Could not find a valid section named locale | Add a `[locale]` section. The same goes for `engine`. |
 | Source locale is not supported | Use a code from `babelfishers locales`. |
+| The engine does not support the locale(s) | Pick a provider that supports them. See [Supported locales](../reference/locales.md). |
 | The Engine is not supported | Use one of the values on the [providers page](providers.md). |
 | Invalid resource type | Check the name after `resources.` against the [formats](../formats.md) table. |
 

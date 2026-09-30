@@ -14,7 +14,7 @@ from babelfishers.models.plan import LocalePlan, RunResult
 from babelfishers.models.run_lock import RunLockEntry
 from babelfishers.models.translations import ParseResult
 from babelfishers.utils.console_formater import ConsoleFormatter
-from babelfishers.utils.utils import get_translation_store_storage_path, hash_file_contents
+from babelfishers.utils.utils import get_translation_store_storage_path
 
 
 @dataclass
@@ -50,7 +50,7 @@ class Runtime:
             One entry per source file and target locale, stale ones carrying a volume estimate.
         """
         tm_store = TMStore(self._tm_store_path) if self._tm_store_path.exists() else None
-        plans, stale_jobs = self._collect_jobs(tm_store)
+        plans, stale_jobs, _ = self._collect_jobs(tm_store)
 
         for job in stale_jobs:
             job.plan.volume = job.pipeline.plan(job.parse_result, self._config.source_locale, job.plan.locale)
@@ -75,12 +75,12 @@ class Runtime:
             empty when nothing changed.
         """
         tm_store = TMStore(self._tm_store_path)
-        plans, stale_jobs = self._collect_jobs(tm_store)
+        plans, stale_jobs, unparsable = self._collect_jobs(tm_store)
         self._log_up_to_date(plans)
 
-        run_lock_entries: list[RunLockEntry] = []
+        completed: list[tuple[_StaleJob, RunLockEntry]] = []
+        finished: list[_StaleJob] = []
         incomplete_jobs: list[_StaleJob] = []
-        translated: list[Path] = []
 
         try:
             with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
@@ -92,6 +92,7 @@ class Runtime:
                     job = futures[future]
                     try:
                         entry = future.result()
+                        finished.append(job)
                     except Exception as exe:
                         self._logger.exception(
                             ConsoleFormatter.error(f"{self._label(job)} -> Pipeline failed"), exc_info=exe
@@ -101,12 +102,27 @@ class Runtime:
                     if entry is None:
                         incomplete_jobs.append(job)
                     else:
-                        run_lock_entries.append(entry)
-                        translated.append(job.plan.destination.resolve())
+                        completed.append((job, entry))
         finally:
+            incomplete = [job.plan.destination.resolve() for job in incomplete_jobs]
+            incomplete.extend(plan.destination.resolve() for plan in unparsable)
+            incomplete = list(dict.fromkeys(incomplete))
+            recorded = [(job, entry) for job, entry in completed if job.plan.destination.resolve() not in incomplete]
+            incomplete_jobs.extend(job for job, _ in completed if job.plan.destination.resolve() in incomplete)
+            translated = list(dict.fromkeys(job.plan.destination.resolve() for job, _ in recorded))
+
             # Best-effort: whatever succeeded before a failure is still recorded,
             # so a re-run doesn't re-translate files that already completed.
-            self._run_lock_store.create(run_lock_entries)
+            # A job that ran to the end saved its file, so the source of each unit it translated is recorded
+            # even when others were left untranslated. A job that raised may not have saved and keeps its old record.
+            self._run_lock_store.create(
+                [entry for _, entry in recorded],
+                {
+                    (str(job.plan.source_path), job.plan.locale): job.parse_result.translated_from
+                    for job in finished
+                    if job.parse_result.translated_from is not None
+                },
+            )
             # A file with untranslated units stays stale, even if an older run had completed it.
             self._run_lock_store.discard([(str(job.plan.source_path), job.plan.locale) for job in incomplete_jobs])
             # Entries for files or locales that left the project would otherwise stay forever.
@@ -121,7 +137,6 @@ class Runtime:
         if translated or orphans_removed:
             state.append(self._run_lock_store.storage_path.resolve())
 
-        incomplete = [job.plan.destination.resolve() for job in incomplete_jobs]
         return RunResult(translated=translated, incomplete=incomplete, state=state)
 
     def refresh_run_lock(self) -> tuple[int, int]:
@@ -139,10 +154,17 @@ class Runtime:
         now = int(time.time())
 
         for resource in self._config.resources:
+            parser = ParserFactory.create(
+                resource.resource_type,
+                self._config.source_locale,
+                self._run_lock_store.translated_from,
+                resource.options,
+            )
             for resource_path in resource.paths:
-                content_hash = hash_file_contents(resource_path.path)
+                content_hash = parser.content_hash(resource_path.path)
                 for locale in self._config.target_locales:
-                    if not resource_path.get_destination_path(locale).exists():
+                    destination = resource_path.get_destination_path(locale)
+                    if not parser.has_target(resource_path.path, destination, locale, resource.excluded_keys):
                         skipped += 1
                         continue
 
@@ -159,9 +181,10 @@ class Runtime:
         self._run_lock_store.replace(entries)
         return len(entries), skipped
 
-    def _collect_jobs(self, tm_store: TMStore | None) -> tuple[list[LocalePlan], list[_StaleJob]]:
+    def _collect_jobs(self, tm_store: TMStore | None) -> tuple[list[LocalePlan], list[_StaleJob], list[LocalePlan]]:
         plans: list[LocalePlan] = []
         stale_jobs: list[_StaleJob] = []
+        unparsable: list[LocalePlan] = []
 
         if len(self._config.resources) == 0:
             self._logger.warning(
@@ -181,7 +204,12 @@ class Runtime:
                 )
                 continue
 
-            parser = ParserFactory.create(resource.resource_type)
+            parser = ParserFactory.create(
+                resource.resource_type,
+                self._config.source_locale,
+                self._run_lock_store.translated_from,
+                resource.options,
+            )
 
             engines: list[Engine] = []
             if resource.engine:
@@ -196,7 +224,7 @@ class Runtime:
 
             for resource_path in resource.paths:
                 source_path = resource_path.path
-                content_hash = hash_file_contents(source_path)
+                content_hash = parser.content_hash(source_path)
 
                 file_plans: list[LocalePlan] = []
                 for locale in self._config.target_locales:
@@ -213,6 +241,9 @@ class Runtime:
                                 content_hash=content_hash,
                                 config_fingerprint=self._config_fingerprint,
                                 destination_path=destination,
+                                target_exists=parser.has_target(
+                                    source_path, destination, locale, resource.excluded_keys
+                                ),
                             ),
                         )
                     )
@@ -227,11 +258,14 @@ class Runtime:
                     source_path=source_path,
                     excluded_keys=resource.excluded_keys,
                 )
+                if parse_result is None:
+                    unparsable.extend(stale_plans)
+                    continue
 
                 for plan in stale_plans:
                     stale_jobs.append(_StaleJob(plan, pipeline, parser.clone(parse_result, plan.locale), content_hash))
 
-        return plans, stale_jobs
+        return plans, stale_jobs, unparsable
 
     def _log_up_to_date(self, plans: list[LocalePlan]) -> None:
         stale_paths = {plan.source_path for plan in plans if plan.is_stale}

@@ -75,7 +75,7 @@ Here is how the paths work.
 - Without `[source]` in the path, the output sits next to the original. `strings.json` becomes `strings_fr.json` and `strings_de.json`.
 - The wildcard `*` matches any file name.
 
-The format name after `resources.` tells Babel Fishers how to read the files. Use `json`, `yaml`, `html`, `properties`, `android`, `po`, `apple`, `arb`, `xliff` or `resx`.
+The format name after `resources.` tells Babel Fishers how to read the files. Use `json`, `yaml`, `html`, `properties`, `android`, `po`, `apple`, `xcstrings`, `arb`, `xliff`, `resx` or `csv`. A String Catalog (`xcstrings`), like a CSV file with a column per locale, holds every locale, so its translations are written back into the source file instead of one file per locale.
 
 ## 4. Preview, then translate
 

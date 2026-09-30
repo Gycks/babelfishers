@@ -44,7 +44,7 @@ paths = ["locales/[source]/*.json"]
 
 ## What you get
 
-- **Ten file formats.** JSON, HTML, YAML, Java properties, Android strings, gettext, Apple strings, Flutter ARB, XLIFF, and .NET resx. Each parser follows its own format's rules.
+- **Twelve file formats.** JSON, HTML, YAML, Java properties, Android strings, gettext, Apple strings, Apple String Catalogs, Flutter ARB, XLIFF, .NET resx, and CSV. Each parser follows its own format's rules.
 - **Nine translation providers.** DeepL, Azure, Google Cloud Translation, LibreTranslate, OpenAI, Anthropic, Google Gemini, Mistral, and DeepSeek. Pick one as your default, or set a different provider per group of files.
 - **Placeholders stay intact.** Variables such as `%s` and `{name}`, and plural rules, are protected before translation and checked afterward.
 - **Glossaries.** Keep terms untranslated, fix their translation per language, or pass extra context to the provider.

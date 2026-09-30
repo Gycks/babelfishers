@@ -1,3 +1,5 @@
+import pytest
+
 from babelfishers.core.guards.toolkit import find_placeholders
 from babelfishers.models.translation_resource import TranslationResourceType as T
 
@@ -38,6 +40,18 @@ class TestFindPlaceholdersRegexCategories:
     def test_finds_whole_positional_stringsdict_specifier_for_apple_resource_type(self):
         spans = find_placeholders("You have %1$#@count@", T.APPLE_STRINGS)
         assert [s.matched_text for s in spans] == ["%1$#@count@"]
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("Hello %@, you have %lld new items", ["%@", "%lld"]),
+            ("Total: %arg", ["%arg"]),
+            ("%#@files@ left", ["%#@files@"]),
+            ("%#@files@ left, %d in total", ["%#@files@", "%d"]),
+        ],
+    )
+    def test_finds_the_apple_placeholders_for_xcstrings_resource_type(self, text, expected):
+        assert [s.matched_text for s in find_placeholders(text, T.XCSTRINGS)] == expected
 
     def test_html_resource_type_has_no_regex_categories_only_brace_scan(self):
         spans = find_placeholders("Found %d results", T.HTML)

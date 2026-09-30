@@ -5,8 +5,9 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Self
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
+from babelfishers.core.csv_layout import CsvOptions, detect_csv_layout
 from babelfishers.models.engine import Engine
 from babelfishers.utils.console_formater import ConsoleFormatter
 
@@ -64,6 +65,8 @@ class TranslationResourceType(StrEnum):
     FLUTTER_ARB = "arb"
     XLIFF = "xliff"
     DOTNET_RESX = "resx"
+    XCSTRINGS = "xcstrings"
+    CSV = "csv"
 
     @classmethod
     def validate(cls, name: str) -> Self | None:
@@ -76,12 +79,25 @@ class TranslationResourceType(StrEnum):
 class ResourcePath(BaseModel):
     path: Path
     pattern: str
+    # The source file also holds every target locale, so translations are written back into it.
+    in_place: bool = False
 
     def get_destination_path(self, locale: str) -> Path:
+        if self.in_place:
+            return self.path
+
         if _PLACEHOLDER in self.pattern:
             return Path(self.pattern.replace(_PLACEHOLDER, locale))
 
         return self.path.with_name(f"{self.path.stem}_{locale}{self.path.suffix}")
+
+
+def _in_place(resource_type: TranslationResourceType, path: Path, locale: str, options: dict[str, Any]) -> bool:
+    if resource_type == TranslationResourceType.XCSTRINGS:
+        return True
+    if resource_type == TranslationResourceType.CSV:
+        return detect_csv_layout(path, locale, CsvOptions.from_mapping(options)).wide
+    return False
 
 
 class TranslationResource(BaseModel):
@@ -89,6 +105,7 @@ class TranslationResource(BaseModel):
     excluded_keys: list[str]
     engine: Engine | None
     paths: list[ResourcePath]
+    options: dict[str, Any] = Field(default_factory=dict)
 
     @classmethod
     def load(
@@ -144,15 +161,27 @@ class TranslationResource(BaseModel):
                 }
 
                 # A path is skipped when it, or any folder containing it, was excluded.
+                options: dict[str, Any] = {}
+                if resource_type == TranslationResourceType.CSV:
+                    options = {name: entry[name] for name in ("delimiter", "columns") if name in entry}
+                    CsvOptions.from_mapping(options)
+
                 resource_paths = [
                     ResourcePath(
                         path=path,
                         pattern=_build_destination_pattern(path_pattern, resolved_pattern, str(path)),
+                        in_place=_in_place(resource_type, path, locale, options),
                     )
                     for p in glob.glob(resolved_pattern, recursive=True)
                     for path in [Path(p)]
                     if excluded.isdisjoint([path, *path.parents])
                 ]
+                if not resource_paths:
+                    shown = path_pattern
+                    if resolved_pattern != path_pattern:
+                        shown = f"{path_pattern} (as {resolved_pattern})"
+                    msg = f"[resources.{resource_type}] path {shown} matched no files."
+                    _logger.warning(ConsoleFormatter.warning(msg))
 
                 engine_string = entry.get("engine")
                 engine: Engine | None = None
@@ -175,6 +204,7 @@ class TranslationResource(BaseModel):
                         excluded_keys=[key for key in excluded_keys if key is not None],
                         engine=engine,
                         paths=resource_paths,
+                        options=options,
                     )
                 )
 

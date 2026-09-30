@@ -24,6 +24,25 @@ class TestDeeplTranslatorTranslate:
         assert result[0].translated_text == "Bonjour"
         assert written == {}
 
+    @pytest.mark.parametrize(
+        ("source", "target", "source_lang", "target_lang"),
+        [
+            ("en", "fr", "EN", "FR-FR"),
+            ("pt-BR", "en", "PT", "EN-US"),
+            ("en-GB", "fil", "EN", "TL"),
+            ("en", "es-MX", "EN", "ES-419"),
+            ("zh", "pt", "ZH", "PT-PT"),
+        ],
+    )
+    def test_sends_a_variant_only_as_the_target(self, translator, make_unit, source, target, source_lang, target_lang):
+        calls = []
+        translator._translator.translate_text = lambda *args, **kwargs: calls.append(kwargs) or _result("x")
+
+        unit, _ = make_unit("Hello")
+        translator.translate([unit], source, target)
+
+        assert (calls[0]["source_lang"], calls[0]["target_lang"]) == (source_lang, target_lang)
+
     def test_skips_units_marked_skip_translation(self, translator, make_unit):
         calls = []
         translator._translator.translate_text = lambda *args, **kwargs: calls.append(args)

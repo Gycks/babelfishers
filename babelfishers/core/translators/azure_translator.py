@@ -68,7 +68,7 @@ class AzureTranslator(Translator):
                         body=[
                             TranslateInputItem(
                                 text=unit.source_text,
-                                language=get_culture_code_for_engine(source, self._engine),
+                                language=get_culture_code_for_engine(source, self._engine, as_source=True),
                                 text_type=text_type,
                                 targets=[TranslationTarget(language=get_culture_code_for_engine(target, self._engine))],
                             )
