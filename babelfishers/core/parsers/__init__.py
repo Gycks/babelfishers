@@ -7,7 +7,7 @@ from . import (  # noqa: F401
     html_parser,
     java_properties_parser,
     json_parser,
+    xcstrings_parser,
     xliff_parser,
     yaml_parser,
-    xcstrings_parser,
 )

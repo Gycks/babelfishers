@@ -78,8 +78,9 @@ class Runtime:
         plans, stale_jobs, unparsable = self._collect_jobs(tm_store)
         self._log_up_to_date(plans)
 
-        run_lock_entries: list[RunLockEntry] = []
+        completed: list[tuple[_StaleJob, RunLockEntry]] = []
         incomplete_jobs: list[_StaleJob] = []
+        incomplete: list[Path] = []
         translated: list[Path] = []
 
         try:
@@ -101,12 +102,25 @@ class Runtime:
                     if entry is None:
                         incomplete_jobs.append(job)
                     else:
-                        run_lock_entries.append(entry)
-                        translated.append(job.plan.destination.resolve())
+                        completed.append((job, entry))
         finally:
+            incomplete = [job.plan.destination.resolve() for job in incomplete_jobs]
+            incomplete.extend(plan.destination.resolve() for plan in unparsable)
+            incomplete = list(dict.fromkeys(incomplete))
+            recorded = [(job, entry) for job, entry in completed if job.plan.destination.resolve() not in incomplete]
+            incomplete_jobs.extend(job for job, _ in completed if job.plan.destination.resolve() in incomplete)
+            translated = list(dict.fromkeys(job.plan.destination.resolve() for job, _ in recorded))
+
             # Best-effort: whatever succeeded before a failure is still recorded,
             # so a re-run doesn't re-translate files that already completed.
-            self._run_lock_store.create(run_lock_entries)
+            self._run_lock_store.create(
+                [entry for _, entry in recorded],
+                {
+                    (str(job.plan.source_path), job.plan.locale): job.parse_result.translated_from
+                    for job, _ in recorded
+                    if job.parse_result.translated_from is not None
+                },
+            )
             # A file with untranslated units stays stale, even if an older run had completed it.
             self._run_lock_store.discard([(str(job.plan.source_path), job.plan.locale) for job in incomplete_jobs])
             # Entries for files or locales that left the project would otherwise stay forever.
@@ -121,8 +135,6 @@ class Runtime:
         if translated or orphans_removed:
             state.append(self._run_lock_store.storage_path.resolve())
 
-        incomplete = [job.plan.destination.resolve() for job in incomplete_jobs]
-        incomplete.extend(plan.destination.resolve() for plan in unparsable)
         return RunResult(translated=translated, incomplete=incomplete, state=state)
 
     def refresh_run_lock(self) -> tuple[int, int]:
@@ -140,7 +152,9 @@ class Runtime:
         now = int(time.time())
 
         for resource in self._config.resources:
-            parser = ParserFactory.create(resource.resource_type, self._config.source_locale)
+            parser = ParserFactory.create(
+                resource.resource_type, self._config.source_locale, self._run_lock_store.translated_from
+            )
             for resource_path in resource.paths:
                 content_hash = parser.content_hash(resource_path.path)
                 for locale in self._config.target_locales:
@@ -185,7 +199,9 @@ class Runtime:
                 )
                 continue
 
-            parser = ParserFactory.create(resource.resource_type, self._config.source_locale)
+            parser = ParserFactory.create(
+                resource.resource_type, self._config.source_locale, self._run_lock_store.translated_from
+            )
 
             engines: list[Engine] = []
             if resource.engine:

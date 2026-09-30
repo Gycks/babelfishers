@@ -1,3 +1,4 @@
+import json
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -80,6 +81,34 @@ class TestRunLockStoreLookupAndCreate:
         assert reloaded.lookup("locales/en/messages.json", "fr") == _entry()
 
 
+    def test_create_records_what_each_unit_was_translated_from_and_persists_it(self, tmp_path):
+        destination = tmp_path / "run.lock"
+        RunLockStore(destination).create([_entry()], {("Localizable.xcstrings", "fr"): {"greeting": "abc"}})
+
+        assert RunLockStore(destination).translated_from("Localizable.xcstrings", "fr") == {"greeting": "abc"}
+
+    def test_create_records_translated_from_without_entries(self, store):
+        store.create([], {("Localizable.xcstrings", "fr"): {"greeting": "abc"}})
+
+        assert store.translated_from("Localizable.xcstrings", "fr") == {"greeting": "abc"}
+
+    def test_create_replaces_the_record_of_a_path_and_locale_and_drops_an_empty_one(self, store):
+        store.create([], {("a.xcstrings", "fr"): {"one": "1"}, ("a.xcstrings", "de"): {"one": "1"}})
+
+        store.create([], {("a.xcstrings", "fr"): {"two": "2"}, ("a.xcstrings", "de"): {}})
+
+        assert store.translated_from("a.xcstrings", "fr") == {"two": "2"}
+        assert store.translated_from("a.xcstrings", "de") == {}
+
+    def test_translated_from_is_empty_for_a_path_never_recorded(self, store):
+        assert store.translated_from("Localizable.xcstrings", "fr") == {}
+
+    def test_the_file_has_no_translated_from_section_when_nothing_was_recorded(self, store, tmp_path):
+        store.create([_entry()])
+
+        assert "translated_from" not in json.loads((tmp_path / "run.lock").read_text(encoding="utf-8"))
+
+
 class TestRunLockStoreIsStale:
     def test_is_stale_is_true_when_never_recorded(self, store, tmp_path):
         assert store.is_stale("locales/en/messages.json", "fr", "hash-1", "fp-1", tmp_path / "missing.json") is True
@@ -132,6 +161,13 @@ class TestRunLockStoreReplace:
         assert reloaded.lookup("locales/en/messages.json", "fr") is None
         assert reloaded.lookup("locales/en/messages.json", "es") is not None
 
+    def test_replace_keeps_what_units_were_translated_from(self, store):
+        store.create([_entry()], {("locales/en/messages.json", "fr"): {"greeting": "abc"}})
+
+        store.replace([])
+
+        assert store.translated_from("locales/en/messages.json", "fr") == {"greeting": "abc"}
+
     def test_replace_with_no_entries_empties_the_store(self, store, tmp_path):
         store.create([_entry()])
 
@@ -167,6 +203,13 @@ class TestRunLockStoreRemoveOrphans:
         assert store.remove_orphans({("locales/en/messages.json", "fr")}) == 0
         assert (tmp_path / "run.lock").stat().st_mtime_ns == before
 
+    def test_drops_what_units_of_orphans_were_translated_from(self, store, tmp_path):
+        store.create([_entry(locale="fr")], {("locales/en/messages.json", "de"): {"greeting": "abc"}})
+
+        assert store.remove_orphans({("locales/en/messages.json", "fr")}) == 0
+
+        assert RunLockStore(tmp_path / "run.lock").translated_from("locales/en/messages.json", "de") == {}
+
     def test_does_not_create_a_file_for_a_store_that_never_wrote_one(self, store, tmp_path):
         assert store.remove_orphans(set()) == 0
         assert not (tmp_path / "run.lock").exists()
@@ -182,6 +225,15 @@ class TestRunLockStoreDiscard:
         assert reloaded.lookup("locales/en/messages.json", "fr") is None
         assert reloaded.lookup("locales/en/messages.json", "de") is not None
 
+    def test_keeps_what_units_were_translated_from(self, store, tmp_path):
+        store.create([_entry()], {("locales/en/messages.json", "fr"): {"greeting": "abc"}})
+
+        store.discard([("locales/en/messages.json", "fr")])
+
+        reloaded = RunLockStore(tmp_path / "run.lock")
+        assert reloaded.lookup("locales/en/messages.json", "fr") is None
+        assert reloaded.translated_from("locales/en/messages.json", "fr") == {"greeting": "abc"}
+
     def test_does_not_create_a_file_when_nothing_was_recorded(self, store, tmp_path):
         store.discard([("locales/en/messages.json", "fr")])
 
@@ -190,12 +242,13 @@ class TestRunLockStoreDiscard:
 
 class TestRunLockStorePrune:
     def test_prune_removes_the_file_and_clears_entries(self, store, tmp_path):
-        store.create([_entry()])
+        store.create([_entry()], {("locales/en/messages.json", "fr"): {"greeting": "abc"}})
 
         assert store.prune() is True
 
         assert not (tmp_path / "run.lock").exists()
         assert store.lookup("locales/en/messages.json", "fr") is None
+        assert store.translated_from("locales/en/messages.json", "fr") == {}
 
     def test_prune_reports_false_when_the_file_does_not_exist(self, store):
         assert store.prune() is False

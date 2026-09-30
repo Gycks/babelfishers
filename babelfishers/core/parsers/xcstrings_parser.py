@@ -2,9 +2,9 @@ import hashlib
 import json
 import logging
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +19,7 @@ from babelfishers.utils.utils import atomic_write, hash_file_contents
 
 _INDENT = "  "
 _TRANSLATED = "translated"
+_NEEDS_REVIEW = "needs_review"
 _CATEGORY_ORDER = ("zero", "one", "two", "few", "many", "other")
 
 # A translation to write: the string's key and the path, inside the target localization, of the
@@ -52,6 +53,22 @@ class _PluralPart:
     texts: dict[str, str]
 
 
+def _source_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+def _unit_key(key: str, label: str) -> str:
+    return f"{key}[{label}]" if label else key
+
+
+@dataclass
+class _Target:
+    locale: str
+    translated_from: Mapping[str, str]
+    writes: _Writes = field(default_factory=dict)
+    record: dict[str, str] = field(default_factory=dict)
+
+
 @register(TranslationResourceType.XCSTRINGS)
 class XCStringParser(Parser):
     # Every locale of a catalog is written into the same file, and the runtime translates locales
@@ -59,9 +76,14 @@ class XCStringParser(Parser):
     _SAVE_LOCK = threading.Lock()
 
     def __init__(self, source_locale: str | None = None) -> None:
+        if source_locale is None:
+            raise ValueError("A string catalog parser needs the configured source locale")
+
         super().__init__(source_locale)
+        self._source_locale: str = source_locale
         self._logger: logging.Logger = logging.getLogger(__name__)
         self._ALLOWED_EXTENSION: str = ".xcstrings"
+        self._catalogs: dict[Path, tuple[tuple[int, int], dict[str, Any]]] = {}
 
     def content_hash(self, source_path: Path) -> str:
         """
@@ -70,7 +92,7 @@ class XCStringParser(Parser):
         every run, so they are left out.
         """
         try:
-            catalog = self._load_catalog(source_path)
+            catalog = self._cached_catalog(source_path)
         except ValueError:
             return hash_file_contents(source_path)
 
@@ -103,7 +125,7 @@ class XCStringParser(Parser):
             return False
 
         try:
-            catalog = self._load_catalog(destination)
+            catalog = self._cached_catalog(destination)
         except ValueError:
             return False
 
@@ -114,7 +136,8 @@ class XCStringParser(Parser):
         if locale.lower() == source_locale.lower():
             return True
 
-        return not self._build_units(catalog, source_locale, set(excluded_keys), locale, {}, warn=False)
+        target = _Target(locale, self._translated_from(str(source_path), locale))
+        return not self._build_units(catalog, source_locale, set(excluded_keys), target, warn=False)
 
     def parse(self, source_path: Path, excluded_keys: list[str]) -> ParseResult | None:
         self._logger.info(ConsoleFormatter.info(f"Parsing source {source_path}"))
@@ -122,10 +145,12 @@ class XCStringParser(Parser):
         if source_path.suffix.lower() != self._ALLOWED_EXTENSION:
             raise ValueError(f"Invalid file extension for {source_path}. Expected {self._ALLOWED_EXTENSION}")
 
-        catalog = self._load_catalog(source_path)
+        catalog = self._cached_catalog(source_path)
         raw_source_locale = catalog.get("sourceLanguage")
-        if raw_source_locale is None:
-            self._logger.error(ConsoleFormatter.error(f"{source_path} has no 'sourceLanguage', skipping the file"))
+        if not isinstance(raw_source_locale, str) or not raw_source_locale:
+            self._logger.error(
+                ConsoleFormatter.error(f"{source_path} has no valid 'sourceLanguage', skipping the file")
+            )
             return None
 
         if raw_source_locale.lower() != self._source_locale.lower():
@@ -149,6 +174,19 @@ class XCStringParser(Parser):
             excluded_keys=excluded,
         )
 
+    def _cached_catalog(self, source_path: Path) -> dict[str, Any]:
+        stat = source_path.stat()
+        signature = (stat.st_mtime_ns, stat.st_size)
+        key = source_path.resolve()
+
+        cached = self._catalogs.get(key)
+        if cached is not None and cached[0] == signature:
+            return cached[1]
+
+        catalog = self._load_catalog(source_path)
+        self._catalogs[key] = (signature, catalog)
+        return catalog
+
     @staticmethod
     def _load_catalog(source_path: Path) -> dict[str, Any]:
         try:
@@ -160,7 +198,8 @@ class XCStringParser(Parser):
 
         if not isinstance(catalog, dict):
             raise ValueError(f"{source_path} is not a string catalog: expected a JSON object at the top level")
-        if not isinstance(catalog.get("strings", {}), dict):
+        strings = catalog.get("strings")
+        if strings is not None and not isinstance(strings, dict):
             raise ValueError(f"{source_path} is not a valid string catalog: 'strings' must be an object")
 
         return catalog
@@ -269,6 +308,24 @@ class XCStringParser(Parser):
         return not (string_unit.get("state") == _TRANSLATED and isinstance(value, str) and value.strip())
 
     @staticmethod
+    def _is_pending(leaf: Any, unit_key: str, source_text: str, translated_from: Mapping[str, str]) -> bool:
+        string_unit = leaf.get("stringUnit") if isinstance(leaf, dict) else None
+        if not isinstance(string_unit, dict):
+            return True
+
+        value = string_unit.get("value")
+        if not (isinstance(value, str) and value.strip()):
+            return True
+
+        recorded = translated_from.get(unit_key)
+        state = string_unit.get("state")
+        if state == _NEEDS_REVIEW:
+            return recorded != _source_hash(source_text)
+        if state == _TRANSLATED:
+            return recorded is not None and recorded != _source_hash(source_text)
+        return True
+
+    @staticmethod
     def _node_at(target: Any, path: tuple[str, ...]) -> Any:
         node = target
         for segment in path:
@@ -295,9 +352,10 @@ class XCStringParser(Parser):
         return False
 
     def _pending_items(
-        self, entry: dict[str, Any], target_locale: str, part: _PlainPart | _PluralPart
+        self, key: str, entry: dict[str, Any], target_state: _Target, part: _PlainPart | _PluralPart
     ) -> list[tuple[tuple[str, ...], str, str]]:
         """The (path, label, source text) triples of `part` the target still lacks."""
+        target_locale = target_state.locale
         localizations = entry.get("localizations")
         target = localizations.get(target_locale) if isinstance(localizations, dict) else None
         target = target if isinstance(target, dict) else {}
@@ -308,7 +366,7 @@ class XCStringParser(Parser):
             # A target the translator made vary by plural or device is left alone.
             if self._is_left_alone(target, part.prefix) or (isinstance(node, dict) and "variations" in node):
                 return []
-            if not self._leaf_needs_translation(node):
+            if not self._is_pending(node, _unit_key(key, label), part.text, target_state.translated_from):
                 return []
             return [((*part.prefix, "stringUnit"), label, part.text)]
 
@@ -323,12 +381,14 @@ class XCStringParser(Parser):
 
         items: list[tuple[tuple[str, ...], str, str]] = []
         for category in sorted(needed, key=_CATEGORY_ORDER.index):
-            if existing is not None and not self._leaf_needs_translation(existing.get(category)):
+            text = part.texts.get(category) or fallback
+            category_label = f"{label}.{category}".lstrip(".")
+            leaf = existing.get(category) if existing is not None else None
+            if not self._is_pending(leaf, _unit_key(key, category_label), text, target_state.translated_from):
                 continue
 
-            text = part.texts.get(category) or fallback
             if text.strip():
-                items.append(((*plural_path, category, "stringUnit"), f"{label}.{category}".lstrip("."), text))
+                items.append(((*plural_path, category, "stringUnit"), category_label, text))
 
         return items
 
@@ -350,13 +410,9 @@ class XCStringParser(Parser):
         catalog: dict[str, Any],
         source_locale: str,
         excluded_keys: set[str],
-        target_locale: str | None = None,
-        writes: _Writes | None = None,
+        target: _Target | None = None,
         warn: bool = True,
     ) -> list[TranslationUnit]:
-        if (target_locale is None) != (writes is None):
-            raise ValueError("'target_locale' and 'writes' must be given together")
-
         strings = catalog.get("strings") or {}
 
         units: list[TranslationUnit] = []
@@ -377,30 +433,28 @@ class XCStringParser(Parser):
 
             comment = entry.get("comment")
             for part in parts:
-                items = (
-                    self._source_items(part)
-                    if target_locale is None
-                    else self._pending_items(entry, target_locale, part)
-                )
+                items = self._source_items(part) if target is None else self._pending_items(key, entry, target, part)
                 for path, label, text in items:
+                    unit_key = _unit_key(key, label)
                     units.append(
                         TranslationUnit(
                             unit_type=TranslationResourceType.XCSTRINGS,
-                            key=f"{key}[{label}]" if label else key,
+                            key=unit_key,
                             source_text=text,
                             context_hint=comment if isinstance(comment, str) else None,
                             write_back=self._write_back_before_clone
-                            if writes is None
-                            else self._make_write_back(writes, (key, path)),
+                            if target is None
+                            else self._make_write_back(target, (key, path), unit_key, text),
                         )
                     )
 
         return units
 
     @staticmethod
-    def _make_write_back(writes: _Writes, write: _Write) -> Callable[[str], None]:
+    def _make_write_back(target: _Target, write: _Write, unit_key: str, source_text: str) -> Callable[[str], None]:
         def write_back(translated: str) -> None:
-            writes[write] = translated
+            target.writes[write] = translated
+            target.record[unit_key] = _source_hash(source_text)
 
         return write_back
 
@@ -418,7 +472,13 @@ class XCStringParser(Parser):
 
         catalog: dict[str, Any] = data.document
         source_locale: str = catalog["sourceLanguage"]
-        writes: _Writes = {}
+        live = {unit.key for unit in data.units}
+        translated_from = self._translated_from(str(data.source_path), target_locale)
+        target = _Target(
+            target_locale,
+            translated_from,
+            record={unit_key: value for unit_key, value in translated_from.items() if unit_key in live},
+        )
 
         if target_locale.lower() == source_locale.lower():
             self._logger.warning(
@@ -426,23 +486,25 @@ class XCStringParser(Parser):
             )
             units: list[TranslationUnit] = []
         else:
-            units = self._build_units(catalog, source_locale, data.excluded_keys, target_locale, writes)
+            units = self._build_units(catalog, source_locale, data.excluded_keys, target)
 
         return ParseResult(
             source_path=data.source_path,
             units=units,
             document=catalog,
-            save=self._make_save(catalog, target_locale, writes),
+            save=self._make_save(catalog, target_locale, target.writes),
             excluded_keys=data.excluded_keys,
+            translated_from=target.record,
         )
 
     def _make_save(self, catalog: dict[str, Any], target_locale: str, writes: _Writes) -> Callable[[Path], None]:
         def save(destination: Path) -> None:
             with self._SAVE_LOCK:
                 # The file may hold locales other runs wrote since it was parsed, so merge into what is on disk.
-                current = self._load_catalog(destination) if destination.exists() else deepcopy(catalog)
                 if not writes and destination.exists():
                     return
+
+                current = self._load_catalog(destination) if destination.exists() else deepcopy(catalog)
 
                 self._apply_writes(current, target_locale, writes)
                 text = self._dump(current, 0) + "\n"
@@ -496,7 +558,7 @@ class XCStringParser(Parser):
                 node[segment] = child
 
                 # A new substitution takes the argument fields of the source's one, everything but its variations.
-                if path[index - 1] == "substitutions" and isinstance(source_node, dict):
+                if index > 0 and path[index - 1] == "substitutions" and isinstance(source_node, dict):
                     child.update(
                         {k: deepcopy(v) for k, v in source_node.items() if k not in ("variations", "stringUnit")}
                     )
@@ -505,7 +567,7 @@ class XCStringParser(Parser):
                 sorted_nodes.append(child)
             node = child
 
-        node["stringUnit"] = {"state": _TRANSLATED, "value": translated}
+        node["stringUnit"] = {"state": _NEEDS_REVIEW, "value": translated}
 
         # Xcode keeps the categories of a plural group and the devices of a variation sorted by name.
         for group in sorted_nodes:

@@ -69,6 +69,20 @@ def _default_transform(unit, target):
     return f"[{target}] {unit.source_text}"
 
 
+def _catalog(**sources) -> dict:
+    return {
+        "sourceLanguage": "en",
+        "strings": {
+            key: {"localizations": {"en": {"stringUnit": {"state": "translated", "value": value}}}}
+            for key, value in sources.items()
+        },
+    }
+
+
+def _catalog_resources() -> list[TranslationResource]:
+    return TranslationResource.load("en", "xcstrings", {"paths": ["Localizable.xcstrings"]})
+
+
 _PLURAL_PO = (
     'msgid ""\nmsgstr ""\n"Language: en\\n"\n"Plural-Forms: nplurals=2; plural=(n != 1);\\n"\n\n'
     'msgid "%d file"\nmsgid_plural "%d files"\nmsgstr[0] ""\nmsgstr[1] ""\n'
@@ -216,6 +230,32 @@ class TestRuntimeOrchestrationResult:
         assert result.state == [(tmp_path / "store.sqlite").resolve(), (tmp_path / ".babelfishers/run.lock").resolve()]
         assert result.paths == [*result.translated, *result.state]
 
+    def test_a_catalog_shared_by_a_failed_locale_is_reported_incomplete_and_not_translated(
+        self, write_json, tmp_path, monkeypatch
+    ):
+        catalog = write_json("Localizable.xcstrings", {"sourceLanguage": "en", "strings": {"greeting": {}}})
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform, fail_targets={"de"})
+
+        resources = TranslationResource.load("en", "xcstrings", {"paths": ["Localizable.xcstrings"]})
+        result = Runtime(
+            _config(resources, ["fr", "es", "de"]), db_storage=tmp_path / "store.sqlite"
+        ).orchestrate_translation_workflow()
+
+        assert result.translated == []
+        assert result.incomplete == [catalog.resolve()]
+
+    def test_a_catalog_translated_for_every_locale_is_reported_once(self, write_json, tmp_path, monkeypatch):
+        catalog = write_json("Localizable.xcstrings", {"sourceLanguage": "en", "strings": {"greeting": {}}})
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+
+        resources = TranslationResource.load("en", "xcstrings", {"paths": ["Localizable.xcstrings"]})
+        result = Runtime(
+            _config(resources, ["fr", "es"]), db_storage=tmp_path / "store.sqlite"
+        ).orchestrate_translation_workflow()
+
+        assert result.translated == [catalog.resolve()]
+        assert result.incomplete == []
+
     def test_reports_nothing_when_nothing_needed_translating(self, write_json, tmp_path, monkeypatch):
         write_json("locales/en/messages.json", {"greeting": "Hello"})
         _register(monkeypatch, Engine.DeepL, transform=_default_transform)
@@ -309,6 +349,68 @@ class TestRuntimeRunLockSkipping:
             "farewell": "[fr] Bye",
         }
         assert RunLockStore().lookup("locales/en/messages.json", "fr") is not None
+
+    def test_a_catalog_translation_waiting_for_review_is_left_alone_by_the_next_run(
+        self, write_json, tmp_path, monkeypatch
+    ):
+        catalog = write_json("Localizable.xcstrings", _catalog(greeting="Hello"))
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+        Runtime(_config(_catalog_resources(), ["fr"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        sent = []
+        _register(monkeypatch, Engine.DeepL, transform=lambda unit, target: sent.append(unit.key) or _default_transform(unit, target))
+        result = Runtime(_config(_catalog_resources(), ["fr"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert sent == []
+        assert result.paths == []
+        fr = json.loads(catalog.read_text())["strings"]["greeting"]["localizations"]["fr"]
+        assert fr == {"stringUnit": {"state": "needs_review", "value": "[fr] Hello"}}
+
+    def test_an_approved_catalog_translation_is_translated_again_when_its_source_changes(
+        self, write_json, tmp_path, monkeypatch
+    ):
+        catalog = write_json("Localizable.xcstrings", _catalog(greeting="Hello", farewell="Bye"))
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform)
+        Runtime(_config(_catalog_resources(), ["fr"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        content = json.loads(catalog.read_text())
+        content["strings"]["greeting"]["localizations"]["fr"]["stringUnit"]["state"] = "translated"
+        content["strings"]["greeting"]["localizations"]["en"]["stringUnit"]["value"] = "Hi"
+        catalog.write_text(json.dumps(content), encoding="utf-8")
+
+        sent = []
+        _register(monkeypatch, Engine.DeepL, transform=lambda unit, target: sent.append(unit.key) or _default_transform(unit, target))
+        Runtime(_config(_catalog_resources(), ["fr"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert sent == ["greeting"]
+        localizations = {
+            key: entry["localizations"]["fr"]["stringUnit"]
+            for key, entry in json.loads(catalog.read_text())["strings"].items()
+        }
+        assert localizations == {
+            "greeting": {"state": "needs_review", "value": "[fr] Hi"},
+            "farewell": {"state": "needs_review", "value": "[fr] Bye"},
+        }
+
+    def test_a_catalog_with_a_failed_locale_records_none_of_its_locales(self, write_json, tmp_path, monkeypatch):
+        write_json("Localizable.xcstrings", _catalog(greeting="Hello"))
+        _register(monkeypatch, Engine.DeepL, transform=_default_transform, fail_targets={"de"})
+        Runtime(_config(_catalog_resources(), ["fr", "de"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert RunLockStore().lookup("Localizable.xcstrings", "fr") is None
+        assert RunLockStore().translated_from("Localizable.xcstrings", "fr") == {}
+
+        sent = []
+        _register(
+            monkeypatch,
+            Engine.DeepL,
+            transform=lambda unit, target: sent.append((unit.key, target)) or _default_transform(unit, target),
+        )
+        Runtime(_config(_catalog_resources(), ["fr", "de"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert sent == [("greeting", "de")]
+        assert set(RunLockStore().translated_from("Localizable.xcstrings", "fr")) == {"greeting"}
+        assert RunLockStore().lookup("Localizable.xcstrings", "de") is not None
 
     def test_retranslates_every_locale_when_the_source_file_content_changes(self, write_json, tmp_path, monkeypatch):
         write_json("locales/en/messages.json", {"greeting": "Hello"})

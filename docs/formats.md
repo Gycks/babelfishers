@@ -1,6 +1,6 @@
 # Supported formats
 
-Babel Fishers currently supports ten localization formats. Translated files are written back in the same format as the source.
+Babel Fishers currently supports eleven localization formats. Translated files are written back in the same format as the source. String Catalogs are the exception to the one-file-per-locale layout: every locale lives in the source file.
 
 | Format | Config key | File extensions |
 |---|---|---|
@@ -11,6 +11,7 @@ Babel Fishers currently supports ten localization formats. Translated files are 
 | [Android strings](#android-strings) | `android` | `.xml` |
 | [gettext](#gettext) | `po` | `.po` |
 | [Apple strings](#apple-strings) | `apple` | `.strings` |
+| [String Catalogs](#string-catalogs) | `xcstrings` | `.xcstrings` |
 | [Flutter ARB](#flutter-arb) | `arb` | `.arb` |
 | [XLIFF](#xliff) | `xliff` | `.xliff`, `.xlf` |
 | [.NET resx](#net-resx) | `resx` | `.resx` |
@@ -27,7 +28,7 @@ paths = ["i18n/[source]/*.po"]
 
 ## What all formats have in common
 
-- Each source file is read once and written once per target locale.
+- Each source file is read once and written once per target locale. For String Catalogs, that write goes into the source file itself.
 - Only text values are translated. Keys and structure are kept.
 - Empty values are skipped.
 - Placeholders in curly braces, such as `{name}` or `{0}`, are protected in every format. Some formats protect more. Each section below lists them.
@@ -103,7 +104,40 @@ paths = ["i18n/[source]/*.po"]
 - **Translated.** The value of each key and value entry in a `.strings` file.
 - **Left alone.** Keys and comments.
 - **Placeholders protected.** printf style including `%@`, `%arg`, stringsdict references, and anything in braces.
-- **Good to know.** The comment written above an entry is sent to the provider as context. Line endings are kept. Only `.strings` files are supported. `.stringsdict` and `.xcstrings` are not.
+- **Good to know.** The comment written above an entry is sent to the provider as context. Line endings are kept. `.stringsdict` files are not supported. For `.xcstrings`, see [String Catalogs](#string-catalogs).
+
+## String Catalogs
+
+**Config key:** `xcstrings`
+
+```toml
+[resources.xcstrings]
+paths = ["App/Localizable.xcstrings"]
+```
+
+- **Translated.** The source-language value of each string, into the same catalog, under each target locale. A string with no source-language value is translated from its key. Plural variations, device variations and substitutions are translated form by form.
+- **Adapted to the target.** Each plural group gets the categories the target language needs, for example `one`, `few`, `many` and `other` for `ru`, and only `other` for `ja`. A `zero` form in the source is kept in every target.
+- **Left alone.** Strings marked *Don't translate* (`shouldTranslate: false`) and stale strings.
+- **Placeholders protected.** printf style including `%@` and `%lld`, `%arg`, substitution references such as `%#@files@`, and anything in braces.
+- **Good to know.** The catalog's `sourceLanguage` must match `source_locale` in your config, or the file is skipped with an error. The comment of a string is sent to the provider as context. The file is written in Xcode's layout, with two-space indentation, `"key" : value` pairs and locales sorted, so diffs stay small. A level that varies by plural and by device at once isn't supported, and the string is skipped with a warning.
+
+### Review in Xcode
+
+Every translation Babel Fishers writes is marked **Needs Review**, so it stands out in Xcode's catalog editor until someone approves it. Babel Fishers remembers, in the run lock, which source text each translation came from, and decides on the next run:
+
+| The translation is | Its source text | Next run |
+|---|---|---|
+| Missing, empty or new | | Translates it |
+| Needs Review | Is the one it was translated from | Leaves it for review |
+| Needs Review | Changed, or is unknown to Babel Fishers | Translates it again |
+| Approved (Translated) | Changed since Babel Fishers translated it | Translates it again, marked Needs Review |
+| Approved (Translated) | Is the same, or was never translated by Babel Fishers | Keeps it |
+
+So a translation you approve is never overwritten while its source stays the same. When the source text changes, whether in Xcode or in the file, the translation is redone. Translations that were already in the catalog before Babel Fishers ran are kept as they are, unless Xcode or a translator marked them Needs Review.
+
+!!! note "One file for every locale"
+
+    Because every locale is written into the same catalog, a provider failure for one locale holds back the whole file. In CI, the catalog is published only once every locale is complete. The locales that did succeed come from the translation memory on the next run, so they aren't sent to the provider again.
 
 ## Flutter ARB
 
@@ -153,6 +187,7 @@ The way you write a key depends on the format.
 |---|---|
 | JSON, YAML, ARB | The path to the value, such as `app.name`. Use `items[0]` for list entries. |
 | Java properties, Apple strings, resx | The key name. |
+| String Catalogs | The string's key, as in the catalog. It leaves out the whole string, with all its variations. |
 | Android | The name. Use `colors[0]` for array items and `apples.one` for plural items. |
 | gettext | The `msgid` text. Use `msgid[0]`, `msgid[1]` and so on for plural forms, numbered as in the target's `Plural-Forms`. |
 | XLIFF | The unit `id`. Use `file-id:unit-id` when a document has several files. |

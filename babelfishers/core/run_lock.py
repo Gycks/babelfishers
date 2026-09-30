@@ -2,7 +2,7 @@ import hashlib
 import json
 import logging
 import threading
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from pathlib import Path
 from typing import Any
 
@@ -25,30 +25,35 @@ class RunLockStore:
         self._logger: logging.Logger = logging.getLogger(__name__)
         self._destination = destination or get_run_lock_storage_path()
         self._write_lock = threading.Lock()
-        self._entries: dict[str, dict[str, RunLockEntry]] = self._load()
+        self._entries: dict[str, dict[str, RunLockEntry]] = {}
+        self._translated_from: dict[str, dict[str, dict[str, str]]] = {}
+        self._load()
 
     @property
     def storage_path(self) -> Path:
         return self._destination
 
-    def _load(self) -> dict[str, dict[str, RunLockEntry]]:
+    def _load(self) -> None:
         if not self._destination.exists():
-            return {}
+            return
 
         raw: dict[str, Any] = json.loads(self._destination.read_text(encoding="utf-8"))
-        return {
+        self._entries = {
             path: {locale: RunLockEntry.model_validate(entry) for locale, entry in locales.items()}
             for path, locales in raw.get("entries", {}).items()
         }
+        self._translated_from = raw.get("translated_from", {})
 
     def _save(self) -> None:
-        payload = {
+        payload: dict[str, Any] = {
             "version": _FORMAT_VERSION,
             "entries": {
                 path: {locale: entry.model_dump() for locale, entry in locales.items()}
                 for path, locales in self._entries.items()
             },
         }
+        if self._translated_from:
+            payload["translated_from"] = self._translated_from
 
         def _write(tmp_path: Path) -> None:
             tmp_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -57,6 +62,9 @@ class RunLockStore:
 
     def lookup(self, path: str, locale: str) -> RunLockEntry | None:
         return self._entries.get(path, {}).get(locale)
+
+    def translated_from(self, path: str, locale: str) -> dict[str, str]:
+        return dict(self._translated_from.get(path, {}).get(locale, {}))
 
     def stale_reason(
         self,
@@ -88,19 +96,31 @@ class RunLockStore:
     ) -> bool:
         return self.stale_reason(path, locale, content_hash, config_fingerprint, destination_path) is not None
 
-    def create(self, entries: list[RunLockEntry]) -> None:
+    def create(
+        self,
+        entries: list[RunLockEntry],
+        translated_from: Mapping[tuple[str, str], Mapping[str, str]] | None = None,
+    ) -> None:
         """Merge `entries` into the store and persist once, regardless of how many are given."""
-        if not entries:
+        if not entries and not translated_from:
             return
 
         with self._write_lock:
             for entry in entries:
                 self._entries.setdefault(entry.path, {})[entry.locale] = entry
+            for (path, locale), sources in (translated_from or {}).items():
+                locales = self._translated_from.setdefault(path, {})
+                if sources:
+                    locales[locale] = dict(sources)
+                else:
+                    locales.pop(locale, None)
+                if not locales:
+                    self._translated_from.pop(path, None)
             self._logger.info(ConsoleFormatter.info(f"Saving run lock file: {self._destination}"))
             self._save()
 
     def replace(self, entries: list[RunLockEntry]) -> None:
-        """Rebuild the store from `entries` alone, dropping everything recorded before."""
+        """Rebuild the entries from `entries` alone, dropping every entry recorded before."""
         with self._write_lock:
             self._entries = {}
             for entry in entries:
@@ -133,11 +153,18 @@ class RunLockStore:
             removed = sum(len(locales) for locales in self._entries.values()) - sum(
                 len(locales) for locales in kept.values()
             )
-            if removed == 0:
+            kept_sources = {
+                path: {locale: sources for locale, sources in locales.items() if (path, locale) in live}
+                for path, locales in self._translated_from.items()
+            }
+            kept_sources = {path: locales for path, locales in kept_sources.items() if locales}
+            if removed == 0 and kept_sources == self._translated_from:
                 return 0
 
             self._entries = kept
-            self._logger.info(ConsoleFormatter.info(f"Removing {removed} orphaned run lock entries"))
+            self._translated_from = kept_sources
+            if removed:
+                self._logger.info(ConsoleFormatter.info(f"Removing {removed} orphaned run lock entries"))
             self._save()
             return removed
 
@@ -148,6 +175,7 @@ class RunLockStore:
 
         self._destination.unlink()
         self._entries = {}
+        self._translated_from = {}
         return True
 
 

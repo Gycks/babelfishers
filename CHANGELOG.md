@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Apple String Catalogs (`.xcstrings`). Translations are marked Needs Review for Xcode. A translation waiting for review or already approved is left alone while its source text stays the same, and is translated again when the source text changes. The run lock remembers which source text each translation came from.
+
+### Changed
+- `ci` holds back a file that several locales write to, such as a String Catalog, when a provider failed on any of those locales. None of its locales are recorded as up to date, so the next run finishes it and the file is published whole.
+
 ## [0.1.2] - 2026-09-29
 
 ### Fixed

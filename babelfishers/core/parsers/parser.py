@@ -1,6 +1,7 @@
 import logging
 from abc import ABC, abstractmethod
 from collections import Counter
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from babelfishers.models.translations import ParseResult, TranslationUnit
@@ -35,6 +36,10 @@ def excluded_keys_without_duplicates(
     return set(excluded_keys) - duplicated.keys()
 
 
+def _nothing_recorded(path: str, locale: str) -> Mapping[str, str]:
+    return {}
+
+
 class Parser(ABC):
     """
     Abstract base class for localization source parsers.
@@ -53,6 +58,10 @@ class Parser(ABC):
                 the others ignore it.
         """
         self._source_locale: str | None = source_locale
+        self._translated_from: Callable[[str, str], Mapping[str, str]] = _nothing_recorded
+
+    def use_translated_from(self, lookup: Callable[[str, str], Mapping[str, str]]) -> None:
+        self._translated_from = lookup
 
     def content_hash(self, source_path: Path) -> str:
         """Fingerprint of what the source file contributes to translation.
