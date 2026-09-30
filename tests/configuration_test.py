@@ -252,6 +252,18 @@ class TestAppConfigLoadFileValidation:
         config = AppConfig.load(config_file)
         assert config.target_locales == ["fr"]
 
+    def test_rejects_targets_that_are_all_the_source_locale(self, write_config):
+        config_file = write_config("""
+            [locale]
+            source = "pt"
+            targets = ["pt-PT", "PT"]
+
+            [engine]
+            provider = "deepl"
+            """)
+        with pytest.raises(ValueError, match="Target locales not set. Every target is the source locale pt"):
+            AppConfig.load(config_file)
+
     def test_rejects_a_plain_code_next_to_its_default_variant(self, write_config):
         config_file = write_config("""
             [locale]

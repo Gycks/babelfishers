@@ -6,8 +6,7 @@ from typing import Any, Self
 from pydantic import BaseModel
 
 from babelfishers.core.supported_cultures import (
-    get_culture_name,
-    get_culture_variant,
+    get_distinct_targets,
     get_unsupported_cultures,
     resolve_culture_code,
 )
@@ -33,6 +32,7 @@ class AppConfig(BaseModel):
 
         A plain code and its default variant, such as `pt` and `pt-PT`, are the same locale, so both
         can't be targets, and a target that is the source locale under another code is dropped too.
+        Fails when no target is left.
         """
         if not isinstance(target_locales, list):
             raise ValueError("Invalid configuration file. Target locales is malformed. Use a list of locale codes.")
@@ -46,21 +46,19 @@ class AppConfig(BaseModel):
                 "Run `babelfishers locales` to list the supported ones."
             )
 
-        source_variant = get_culture_variant(source_locale)
-        by_variant: dict[str, str] = {}
-        for code in dict.fromkeys(resolve_culture_code(code) or code for code in target_locales):
-            variant = get_culture_variant(code)
-            if variant == source_variant:
-                continue
+        resolved = [resolve_culture_code(code) or code for code in target_locales]
+        try:
+            distinct = get_distinct_targets(source_locale, resolved)
+        except ValueError as exc:
+            raise ValueError(f"Invalid configuration file. {exc}") from exc
 
-            if variant in by_variant:
-                raise ValueError(
-                    f"Invalid configuration file. Target locales {by_variant[variant]} and {code} are both "
-                    f"{get_culture_name(code)}. Keep one."
-                )
-            by_variant[variant] = code
+        if not distinct:
+            raise ValueError(
+                "Invalid configuration file. Target locales not set. "
+                f"Every target is the source locale {source_locale}."
+            )
 
-        return list(by_variant.values())
+        return distinct
 
     @staticmethod
     def _check_engine_locales(engine: Engine, source_locale: str, target_locales: list[str], where: str = "") -> None:

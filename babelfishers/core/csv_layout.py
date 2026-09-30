@@ -8,7 +8,7 @@ from typing import Any, Self
 
 from babel import Locale, UnknownLocaleError
 
-from babelfishers.core.supported_cultures import resolve_culture_code
+from babelfishers.core.supported_cultures import get_culture_variant, resolve_culture_code
 
 
 BOM = "\ufeff"
@@ -79,6 +79,27 @@ class CsvLayout:
         if self.value is None:
             raise ValueError("The layout has no source column")
         return self.value
+
+    def locale_name(self, locale: str) -> str | None:
+        """The locale column that holds `locale`, also when it is named with the plain code or the variant."""
+        return _find_locale(self.locales, locale)
+
+    def is_source(self, locale: str) -> bool:
+        return self.source_locale is not None and self.locale_name(locale) == self.source_locale
+
+    def locale_column(self, locale: str) -> int | None:
+        name = self.locale_name(locale)
+        return None if name is None else self.locales[name]
+
+
+def _variant(locale: str) -> str:
+    code = resolve_culture_code(locale)
+    return locale.lower() if code is None else get_culture_variant(code)
+
+
+def _find_locale(locales: Mapping[str, int], locale: str) -> str | None:
+    """The name in `locales` of the same locale as `locale`, so that a plain code such as `pt` finds `pt-PT`."""
+    return next((name for name in locales if _variant(name) == _variant(locale)), None)
 
 
 def read_csv_text(path: Path) -> tuple[str, bool]:
@@ -165,17 +186,21 @@ def detect_csv_layout(path: Path, source_locale: str, options: CsvOptions | None
                 f"{path}: column '{cell.strip()}' is the locale '{locale}', which is not supported. "
                 "Run `babelfishers locales` to list the supported ones, or map the columns with 'columns'"
             )
-        if locale in locales:
-            raise ValueError(f"{path} has more than one column for the locale '{locale}'")
+        same = _find_locale(locales, locale)
+        if same is not None:
+            raise ValueError(
+                f"{path} has more than one column for the locale '{locale}': "
+                f"'{header[locales[same]].strip()}' and '{cell.strip()}'"
+            )
         locales[locale] = index
 
-    source = source_locale.lower()
+    source = _find_locale(locales, source_locale)
     if "key" not in roles:
         if 0 in roles.values() or 0 in locales.values():
             raise ValueError(f"{path} has no key column. Name it 'key', or map it with 'columns'")
         roles["key"] = 0
 
-    if source in locales:
+    if source is not None:
         if "value" in roles:
             raise ValueError(
                 f"{path} has both a '{header[locales[source]]}' and a '{header[roles['value']]}' column, "

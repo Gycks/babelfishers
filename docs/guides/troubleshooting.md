@@ -22,7 +22,7 @@ The message continues with the reason. This table lists them.
 | Could not find a valid section named locale | Add a `[locale]` section. |
 | Could not find a valid section named engine | Add an `[engine]` section. |
 | Source locale not set | Add `source` to `[locale]`. |
-| Target locales not set | Add `targets` to `[locale]`. |
+| Target locales not set | Add `targets` to `[locale]`, with at least one locale other than the source. `en-US` counts as the source when it is `en`. |
 | Source locale is not supported, or Target locales are not supported | Use codes from `babelfishers locales`. |
 | Target locales is malformed | Write `targets` as a list, for example `targets = ["fr"]`. |
 | Target locales are both the same language | A plain code and its variant, such as `pt` and `pt-PT`, are the same locale. Keep one. |

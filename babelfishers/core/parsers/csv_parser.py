@@ -104,7 +104,7 @@ class CSVParser(Parser):
 
         if not table.layout.wide:
             return True
-        if locale.lower() == table.layout.source_locale:
+        if table.layout.is_source(locale):
             return True
 
         target = _Target(locale, self._translated_from(str(source_path), locale))
@@ -190,7 +190,7 @@ class CSVParser(Parser):
         )
 
     def _pending_rows(self, table: _Table, excluded_keys: set[str], target: _Target) -> list[_Row]:
-        column = table.layout.locales.get(target.locale.lower())
+        column = table.layout.locale_column(target.locale)
         pending: list[_Row] = []
         for row in self._rows(table, excluded_keys):
             current = _cell(table.rows[row.index], column)
@@ -209,7 +209,7 @@ class CSVParser(Parser):
         )
 
         units: list[TranslationUnit] = []
-        if target.locale.lower() == table.layout.source_locale:
+        if table.layout.is_source(target.locale):
             self._logger.warning(
                 ConsoleFormatter.warning(f"Skipping '{target_locale}': it is the source locale of {data.source_path}")
             )
@@ -243,7 +243,7 @@ class CSVParser(Parser):
                     return
 
                 current = self._read_table(destination)
-                column = current.layout.locales.get(target.locale.lower())
+                column = current.layout.locale_column(target.locale)
                 if column is None:
                     column = len(current.rows[0])
                     current.rows[0].append(target.locale)

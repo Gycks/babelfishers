@@ -133,9 +133,19 @@ class TestCsvLayoutDetection:
         with pytest.raises(ValueError, match="more than one key column"):
             detect_csv_layout(write_csv("key,id,value\n"), "en")
 
-    def test_two_columns_for_the_same_locale_fail(self, write_csv):
-        with pytest.raises(ValueError, match="more than one column for the locale 'fr'"):
-            detect_csv_layout(write_csv("key,en,fr,French(fr)\n"), "en")
+    @pytest.mark.parametrize(
+        ("header", "locale"),
+        [("key,en,fr,French(fr)", "fr"), ("key,en,pt,pt-PT", "pt-pt")],
+    )
+    def test_two_columns_for_the_same_locale_fail(self, write_csv, header, locale):
+        with pytest.raises(ValueError, match=f"more than one column for the locale '{locale}'"):
+            detect_csv_layout(write_csv(f"{header}\n"), "en")
+
+    @pytest.mark.parametrize(("header", "source"), [("key,en-US,fr", "en"), ("key,en,fr", "en-US")])
+    def test_the_source_column_may_use_the_plain_code_or_the_variant(self, write_csv, header, source):
+        layout = detect_csv_layout(write_csv(f"{header}\n"), source)
+
+        assert (layout.wide, layout.source) == (True, 1)
 
     def test_a_file_that_is_not_utf8_fails(self, write_csv):
         with pytest.raises(ValueError, match="UTF-8"):
@@ -216,6 +226,11 @@ class TestCsvParserWide:
 
         assert text == "key,en,fr,comment\ngreeting,Hello,[fr] Hello,Home\nbye,Bye,Au revoir,\n"
 
+    def test_a_plain_target_code_fills_the_column_of_its_variant(self, parser, write_csv):
+        source = write_csv("key,en,pt-PT\ngreeting,Hello,\n")
+
+        assert _translate(parser, source, "pt", source) == "key,en,pt-PT\ngreeting,Hello,[pt] Hello\n"
+
     def test_a_target_locale_without_a_column_gets_one_appended(self, parser, write_csv):
         source = write_csv("key,en\ngreeting,Hello\n")
 
@@ -250,11 +265,12 @@ class TestCsvParserWide:
 
         assert _translate(parser, source, "fr", source) == "key,en,fr\ngreeting,Hello,[fr] Hello"
 
-    def test_a_target_that_is_the_source_locale_is_skipped_with_a_warning(self, parser, write_csv, caplog):
+    @pytest.mark.parametrize("target", ["EN", "en-US"])
+    def test_a_target_that_is_the_source_locale_is_skipped_with_a_warning(self, parser, write_csv, caplog, target):
         source = write_csv("key,en\ngreeting,Hello\n")
 
         with caplog.at_level(logging.WARNING):
-            assert parser.clone(parser.parse(source, []), "EN").units == []
+            assert parser.clone(parser.parse(source, []), target).units == []
 
         assert any("source locale" in r.message for r in caplog.records)
 

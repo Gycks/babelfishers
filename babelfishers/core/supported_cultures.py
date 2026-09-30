@@ -263,6 +263,28 @@ def get_culture_variant(culture_code: str) -> str:
     return _get_culture(culture_code).default_variant or culture_code
 
 
+def get_distinct_targets(source: str, targets: Iterable[str]) -> list[str]:
+    """Drop repeated targets and targets that are the source locale, comparing the locales they translate as.
+
+    Raises:
+        ValueError: When two targets are the same locale under different codes, such as `pt` and `pt-PT`.
+    """
+    source_variant = get_culture_variant(source)
+    by_variant: dict[str, str] = {}
+    for code in dict.fromkeys(targets):
+        variant = get_culture_variant(code)
+        if variant == source_variant:
+            continue
+
+        if variant in by_variant:
+            raise ValueError(
+                f"Target locales {by_variant[variant]} and {code} are both {get_culture_name(code)}. Keep one."
+            )
+        by_variant[variant] = code
+
+    return list(by_variant.values())
+
+
 def is_supported_by(culture_code: str, engine: Engine, as_source: bool = False) -> bool:
     codes = _ENGINE_CODES[engine]
     return get_culture_variant(culture_code) in (codes.sources if as_source else codes.targets)

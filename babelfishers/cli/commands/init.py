@@ -4,7 +4,7 @@ import click
 
 from babelfishers.cli import ui
 from babelfishers.cli.param_types import LocaleListType, LocaleType
-from babelfishers.core.supported_cultures import get_culture_variant, get_unsupported_cultures
+from babelfishers.core.supported_cultures import get_distinct_targets, get_unsupported_cultures
 from babelfishers.models.engine import Engine
 
 
@@ -32,7 +32,11 @@ def _render_config(source: str, targets: list[str], engine: str) -> str:
 
 
 def _without_source(targets: list[str], source: str) -> list[str]:
-    remaining = [target for target in targets if get_culture_variant(target) != get_culture_variant(source)]
+    try:
+        remaining = get_distinct_targets(source, targets)
+    except ValueError as exc:
+        raise click.BadParameter(str(exc), param_hint="--targets") from exc
+
     if not remaining:
         raise click.BadParameter(
             f"Provide at least one locale other than the source locale '{source}'.", param_hint="--targets"
