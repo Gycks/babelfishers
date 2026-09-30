@@ -16,7 +16,8 @@ from babelfishers.utils.utils import atomic_write
 
 @register(TranslationResourceType.FLUTTER_ARB)
 class FlutterArbParser(Parser):
-    def __init__(self) -> None:
+    def __init__(self, source_locale: str | None = None) -> None:
+        super().__init__(source_locale)
         self._logger: logging.Logger = logging.getLogger(__name__)
         self._ALLOWED_EXTENSION: str = ".arb"
 

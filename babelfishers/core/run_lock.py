@@ -59,13 +59,20 @@ class RunLockStore:
         return self._entries.get(path, {}).get(locale)
 
     def stale_reason(
-        self, path: str, locale: str, content_hash: str, config_fingerprint: str, destination_path: Path
+        self,
+        path: str,
+        locale: str,
+        content_hash: str,
+        config_fingerprint: str,
+        destination_path: Path,
+        target_exists: bool | None = None,
     ) -> StaleReason | None:
+        """`target_exists` overrides the check that `destination_path` exists, for formats where that says nothing."""
         entry = self.lookup(path, locale)
         if entry is None:
             return StaleReason.NEW
 
-        if not destination_path.exists():
+        if not (destination_path.exists() if target_exists is None else target_exists):
             return StaleReason.TARGET_MISSING
 
         if entry.content_hash != content_hash:

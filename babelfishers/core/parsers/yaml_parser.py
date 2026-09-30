@@ -39,7 +39,8 @@ def _make_duplicate_key_warning_loader(logger: logging.Logger) -> type[yaml.Safe
 
 @register(TranslationResourceType.YAML)
 class YAMLParser(Parser):
-    def __init__(self) -> None:
+    def __init__(self, source_locale: str | None = None) -> None:
+        super().__init__(source_locale)
         self._logger: logging.Logger = logging.getLogger(__name__)
         self._ALLOWED_EXTENSIONS: tuple[str, ...] = (".yaml", ".yml")
 

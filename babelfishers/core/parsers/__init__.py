@@ -9,4 +9,5 @@ from . import (  # noqa: F401
     json_parser,
     xliff_parser,
     yaml_parser,
+    xcstrings_parser,
 )

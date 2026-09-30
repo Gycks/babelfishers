@@ -64,6 +64,7 @@ class TranslationResourceType(StrEnum):
     FLUTTER_ARB = "arb"
     XLIFF = "xliff"
     DOTNET_RESX = "resx"
+    XCSTRINGS = "xcstrings"
 
     @classmethod
     def validate(cls, name: str) -> Self | None:
@@ -76,8 +77,13 @@ class TranslationResourceType(StrEnum):
 class ResourcePath(BaseModel):
     path: Path
     pattern: str
+    # The source file also holds every target locale, so translations are written back into it.
+    in_place: bool = False
 
     def get_destination_path(self, locale: str) -> Path:
+        if self.in_place:
+            return self.path
+
         if _PLACEHOLDER in self.pattern:
             return Path(self.pattern.replace(_PLACEHOLDER, locale))
 
@@ -148,6 +154,7 @@ class TranslationResource(BaseModel):
                     ResourcePath(
                         path=path,
                         pattern=_build_destination_pattern(path_pattern, resolved_pattern, str(path)),
+                        in_place=resource_type == TranslationResourceType.XCSTRINGS,
                     )
                     for p in glob.glob(resolved_pattern, recursive=True)
                     for path in [Path(p)]
