@@ -398,7 +398,7 @@ class TestRuntimeRunLockSkipping:
         Runtime(_config(_catalog_resources(), ["fr", "de"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
 
         assert RunLockStore().lookup("Localizable.xcstrings", "fr") is None
-        assert RunLockStore().translated_from("Localizable.xcstrings", "fr") == {}
+        assert set(RunLockStore().translated_from("Localizable.xcstrings", "fr")) == {"greeting"}
 
         sent = []
         _register(
@@ -438,6 +438,37 @@ class TestRuntimeRunLockSkipping:
         header = rows[0]
         assert rows[1][header.index("fr")] == "[fr] Hi"
         assert rows[2][header.index("de")] == "[de] Bye"
+
+    def test_a_wide_csv_row_translated_in_a_run_that_left_others_untranslated_follows_its_source(
+        self, tmp_path, monkeypatch
+    ):
+        source = tmp_path / "strings.csv"
+        source.write_text("key,en\ngreeting,Hello\nbye,Bye\n", encoding="utf-8")
+
+        def fail_on_bye(unit, target):
+            if unit.key == "bye":
+                raise RuntimeError("simulated failure for bye")
+            return _default_transform(unit, target)
+
+        _register(monkeypatch, Engine.DeepL, transform=fail_on_bye)
+        resources = TranslationResource.load("en", "csv", {"paths": ["strings.csv"]})
+        result = Runtime(_config(resources, ["fr"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert result.incomplete == [source.resolve()]
+        assert set(RunLockStore().translated_from("strings.csv", "fr")) == {"greeting"}
+
+        source.write_text(source.read_text(encoding="utf-8").replace(",Hello,", ",Hi,"), encoding="utf-8")
+        sent = []
+        _register(
+            monkeypatch,
+            Engine.DeepL,
+            transform=lambda unit, target: sent.append(unit.key) or _default_transform(unit, target),
+        )
+        resources = TranslationResource.load("en", "csv", {"paths": ["strings.csv"]})
+        Runtime(_config(resources, ["fr"]), db_storage=tmp_path / "store.sqlite").orchestrate_translation_workflow()
+
+        assert sorted(sent) == ["bye", "greeting"]
+        assert source.read_text(encoding="utf-8") == "key,en,fr\ngreeting,Hi,[fr] Hi\nbye,Bye,[fr] Bye\n"
 
     def test_a_narrow_csv_file_is_written_per_locale_with_the_options_of_its_path(
         self, write_json, tmp_path, monkeypatch

@@ -79,9 +79,8 @@ class Runtime:
         self._log_up_to_date(plans)
 
         completed: list[tuple[_StaleJob, RunLockEntry]] = []
+        finished: list[_StaleJob] = []
         incomplete_jobs: list[_StaleJob] = []
-        incomplete: list[Path] = []
-        translated: list[Path] = []
 
         try:
             with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
@@ -93,6 +92,7 @@ class Runtime:
                     job = futures[future]
                     try:
                         entry = future.result()
+                        finished.append(job)
                     except Exception as exe:
                         self._logger.exception(
                             ConsoleFormatter.error(f"{self._label(job)} -> Pipeline failed"), exc_info=exe
@@ -113,11 +113,13 @@ class Runtime:
 
             # Best-effort: whatever succeeded before a failure is still recorded,
             # so a re-run doesn't re-translate files that already completed.
+            # A job that ran to the end saved its file, so the source of each unit it translated is recorded
+            # even when others were left untranslated. A job that raised may not have saved and keeps its old record.
             self._run_lock_store.create(
                 [entry for _, entry in recorded],
                 {
                     (str(job.plan.source_path), job.plan.locale): job.parse_result.translated_from
-                    for job, _ in recorded
+                    for job in finished
                     if job.parse_result.translated_from is not None
                 },
             )
