@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.1.3] - TBD
+## [0.1.3] - 2026-10-01
 
 ### Added
 - Apple String Catalogs (`.xcstrings`). Translations are marked Needs Review for Xcode. A translation waiting for review or already approved is left alone while its source text stays the same, and is translated again when the source text changes. The run lock remembers which source text each translation came from.
